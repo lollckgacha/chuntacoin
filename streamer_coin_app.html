@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>천타버스 코인 거래소</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d29;
+    --card-hover: #21253400;
+    --accent: #6c5ce7;
+    --up: #ff5e6c;
+    --down: #4d8dff;
+    --text: #eaeaf0;
+    --muted: #8a8fa3;
+    --border: #2a2e3d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', -apple-system, sans-serif;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+  header h1 { font-size: 20px; margin: 0; }
+  #authArea { display: flex; align-items: center; gap: 12px; }
+  #authArea img { width: 32px; height: 32px; border-radius: 50%; }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  #balanceBar {
+    display: flex;
+    gap: 24px;
+    padding: 16px 24px;
+    background: var(--card);
+    margin: 16px 24px;
+    border-radius: 12px;
+    align-items: center;
+  }
+  #balanceBar .stat { display: flex; flex-direction: column; }
+  #balanceBar .stat .label { font-size: 12px; color: var(--muted); }
+  #balanceBar .stat .value { font-size: 20px; font-weight: 700; }
+
+  #coinGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    padding: 0 24px 24px;
+  }
+  .coin-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .coin-card:hover { border-color: var(--member-color, var(--accent)); }
+  .coin-top { display: flex; align-items: center; gap: 8px; }
+  .coin-icon {
+    width: 34px; height: 34px; border-radius: 50%;
+    object-fit: cover; object-position: center top;
+    border: 2px solid var(--member-color, var(--border));
+    flex-shrink: 0; background: var(--bg);
+  }
+  .coin-name { font-weight: 700; font-size: 16px; flex: 1; }
+  .coin-status { font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+  .status-live { background: rgba(255,94,108,0.15); color: var(--up); }
+  .status-closed { background: rgba(138,143,163,0.15); color: var(--muted); }
+  .coin-price { font-size: 26px; font-weight: 800; margin-top: 8px; }
+  .coin-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .coin-spark { display: block; margin-top: 8px; width: 100%; height: 36px; }
+  .coin-spark polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+  .spark-up polyline { stroke: var(--up); }
+  .spark-down polyline { stroke: var(--down); }
+  .spark-flat polyline { stroke: var(--muted); }
+
+  #modalBg {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  #modalBg.open { display: flex; }
+  #modal {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 24px;
+    width: 320px;
+  }
+  #modal h2 { margin-top: 0; }
+  #modal .row { display: flex; justify-content: space-between; margin: 8px 0; font-size: 14px; color: var(--muted); }
+  #modal input {
+    width: 100%; padding: 10px; margin: 12px 0;
+    background: #12141c; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 16px;
+  }
+  #modal .actions { display: flex; gap: 8px; margin-top: 16px; }
+  #modal .actions button { flex: 1; }
+  .btn-buy { background: var(--up); }
+  .btn-sell { background: var(--down); }
+  #modalMsg { font-size: 13px; margin-top: 8px; min-height: 18px; }
+
+  #historyPanel {
+    margin: 0 24px 40px;
+    background: var(--card);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid var(--border);
+  }
+  #historyPanel h3 { margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+
+  #guestBanner {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap;
+    margin: 16px 24px 0;
+    padding: 12px 16px;
+    background: rgba(108,92,231,0.12);
+    border: 1px solid rgba(108,92,231,0.35);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  #guestBanner p { margin: 0; color: var(--text); }
+  #guestBanner .muted { color: var(--muted); font-size: 12px; }
+  #guestBanner button { flex-shrink: 0; }
+
+  #migrateNotice {
+    display: flex; align-items: center;
+    margin: 16px 24px 0;
+    padding: 12px 16px;
+    background: rgba(74,222,128,0.12);
+    border: 1px solid rgba(74,222,128,0.4);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  #migrateNotice p { margin: 0; color: #4ade80; font-weight: 700; }
+
+  /* ====================== 모바일 반응형 ====================== */
+  @media (max-width: 640px) {
+    header { padding: 12px 16px; }
+    header h1 { font-size: 16px; }
+    #authArea span { display: none; } /* 좁은 화면에서는 이름 숨기고 아바타/로그아웃만 */
+    #balanceBar {
+      margin: 12px 16px;
+      padding: 12px 16px;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    #balanceBar .stat .value { font-size: 16px; }
+    #coinGrid {
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 10px;
+      padding: 0 16px 16px;
+    }
+    .coin-card { padding: 12px; }
+    .coin-price { font-size: 20px; }
+    #historyPanel { margin: 0 16px 24px; padding: 12px; }
+    table { font-size: 12px; }
+    th, td { padding: 5px 4px; }
+    #modal { width: min(90vw, 320px); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🪙 천타버스 코인 거래소</h1>
+  <div id="authArea"></div>
+</header>
+
+<div id="guestBanner" style="display:none;">
+  <div>
+    <p>분당 채팅수 = 코인 가격. 로그인 없이도 가상자산 10만원으로 바로 거래할 수 있어요.</p>
+    <p class="muted">Google 로그인을 하면 PC/모바일 기기 간 데이터가 연동되고, 브라우저 쿠키를 삭제해도 잔액과 보유내역이 유지돼요.</p>
+  </div>
+  <button id="loginBtn">Google로 로그인</button>
+</div>
+
+<div id="migrateNotice" style="display:none;">
+  <p>✅ 게스트로 거래하던 내역을 계정으로 그대로 이어받았어요!</p>
+</div>
+
+<div id="app">
+  <div id="balanceBar">
+    <div class="stat">
+      <span class="label">보유 현금</span>
+      <span class="value" id="balanceVal">-</span>
+    </div>
+    <div class="stat">
+      <span class="label">평가 자산</span>
+      <span class="value" id="portfolioVal">-</span>
+    </div>
+    <div class="stat">
+      <span class="label">총 자산</span>
+      <span class="value" id="totalVal">-</span>
+    </div>
+  </div>
+
+  <div id="coinGrid"></div>
+
+  <div id="historyPanel">
+    <h3>내 거래내역</h3>
+    <table>
+      <thead><tr><th>시간</th><th>코인</th><th>구분</th><th>수량</th><th>가격</th></tr></thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="modalBg">
+  <div id="modal">
+    <h2 id="modalTitle">-</h2>
+    <div class="row"><span>현재가</span><span id="modalPrice">-</span></div>
+    <div class="row"><span>보유수량</span><span id="modalHolding">-</span></div>
+    <input type="number" id="modalQty" placeholder="수량 입력" min="1" step="1">
+    <div class="row"><span>예상 금액</span><span id="modalTotal">0원</span></div>
+    <div class="actions">
+      <button class="btn-buy" id="btnBuy">매수</button>
+      <button class="btn-sell" id="btnSell">매도</button>
+    </div>
+    <div id="modalMsg"></div>
+    <button class="ghost" style="width:100%;margin-top:12px" id="btnClose">닫기</button>
+  </div>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+
+<script>
+// ====================== 설정 ======================
+// 천타버스 팡팡(chuntapang)과 같은 Firebase 프로젝트를 공유해서 사용합니다.
+const firebaseConfig = {
+  apiKey: "AIzaSyCkRMIw1AcnI9w9agNhTCwgS1xgA8FNUG0",
+  authDomain: "chunta-d80c5.firebaseapp.com",
+  projectId: "chunta-d80c5",
+  storageBucket: "chunta-d80c5.firebasestorage.app",
+  messagingSenderId: "806899242677",
+  appId: "1:806899242677:web:73ba1280459de4083390fc"
+};
+
+const INITIAL_BALANCE = 100000; // 최초 지급 가상 자금
+const GUEST_STORAGE_KEY = 'chuntacoin_guest_v1';
+
+// 천타버스 12명 실제 SOOP BJ ID + 코인 카드용 이미지/퍼스널컬러
+// (이미지는 images/ 폴더, 퍼스널컬러는 천타버스 팡팡 게임 코드에서 그대로 가져옴)
+const STREAMER_LIST = [
+  { streamerId: "chunyang",  name: "천양",   bjId: "243000",     file: "01.png", color: "#18D7F2" },
+  { streamerId: "imhaming",  name: "임하밍", bjId: "imha22",     file: "04.png", color: "#E88CFF" },
+  { streamerId: "kyaang",    name: "캬앙",   bjId: "kyaang123",  file: "08.png", color: "#F25555" },
+  { streamerId: "kimwello",  name: "김웰로", bjId: "wellro314",  file: "09.png", color: "#79D85A" },
+  { streamerId: "dalta",     name: "달타",   bjId: "dalta20",    file: "11.png", color: "#E88920" },
+  { streamerId: "chebi",     name: "체비",   bjId: "chebi2",     file: "06.png", color: "#98A3B3" },
+  { streamerId: "nanamoon",  name: "나나문", bjId: "nanamoon777",file: "03.png", color: "#F4F6FF" },
+  { streamerId: "moonmomo",  name: "문모모", bjId: "doormomo",   file: "05.png", color: "#8E57E8" },
+  { streamerId: "moca",      name: "모카",   bjId: "mocamu2",    file: "10.png", color: "#3E73FF" },
+  { streamerId: "kapu",      name: "카푸",   bjId: "kappuchan",  file: "07.png", color: "#c29b96" },
+  { streamerId: "madaom",    name: "마다옴", bjId: "madaomm",    file: "02.png", color: "#FFD84D" },
+  { streamerId: "plli",      name: "플리",   bjId: "plincess",   file: "12.png", color: "#b8e1f5" },
+];
+const STREAMER_META = Object.fromEntries(STREAMER_LIST.map(s => [s.streamerId, s]));
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+// Cloud Functions는 region을 asia-northeast3로 배포했으므로 클라이언트도 동일 리전을 지정해야 함
+const functions = firebase.app().functions('asia-northeast3');
+const tradeFn = functions.httpsCallable('trade');
+const ensureAccountFn = functions.httpsCallable('ensureAccount');
+
+let currentUser = null;
+let coinsCache = {};
+let selectedCoinId = null;
+
+// ====================== 게스트(로컬 저장) 모드 ======================
+// 로그인하지 않아도 거래할 수 있도록 잔액/보유량/거래내역을 localStorage에 저장한다.
+// 로그인하면 Firestore(클라우드) 데이터로 전환되고, 로그아웃하면 다시 게스트 데이터로 돌아온다.
+function loadGuestData() {
+  try {
+    const raw = localStorage.getItem(GUEST_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return { balance: INITIAL_BALANCE, holdings: {}, history: [] };
+}
+function saveGuestData(data) {
+  localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(data));
+}
+let guestData = loadGuestData();
+
+function renderGuestHistory() {
+  const rows = [...guestData.history]
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 30)
+    .map(d => `<tr>
+      <td>${new Date(d.timestamp).toLocaleString('ko-KR')}</td>
+      <td>${STREAMER_META[d.streamerId]?.name || d.streamerId}</td>
+      <td>${d.type === 'buy' ? '매수' : '매도'}</td>
+      <td>${d.qty}</td>
+      <td>${fmt(d.price)}원</td>
+    </tr>`);
+  document.getElementById('historyBody').innerHTML = rows.join('');
+}
+
+function refreshGuestUI() {
+  window.__myUser = guestData;
+  document.getElementById('balanceVal').textContent = fmt(guestData.balance) + '원';
+  updatePortfolioValue();
+  renderGuestHistory();
+  if (selectedCoinId) refreshModalPrice();
+}
+
+// ====================== 인증 ======================
+document.getElementById('loginBtn').onclick = () => {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(e => alert('로그인 실패: ' + e.message));
+};
+
+// 코인 시세는 로그인 여부와 무관하게 항상 공개로 구독한다.
+listenToCoins();
+
+// Firebase 인증 상태 확인이 끝나기 전에도 바로 게스트 모드로 보여준다
+// (인증 상태가 오면 아래 onAuthStateChanged가 필요시 로그인 상태로 갱신함)
+document.getElementById('guestBanner').style.display = 'flex';
+refreshGuestUI();
+
+auth.onAuthStateChanged(async (user) => {
+  if (user) {
+    currentUser = user;
+    document.getElementById('guestBanner').style.display = 'none';
+    renderAuthArea(user);
+    await ensureAccount();
+    listenToUser(user.uid);
+    listenToHistory(user.uid);
+  } else {
+    currentUser = null;
+    document.getElementById('guestBanner').style.display = 'flex';
+    renderAuthArea(null);
+    guestData = loadGuestData();
+    refreshGuestUI();
+  }
+});
+
+function renderAuthArea(user) {
+  const el = document.getElementById('authArea');
+  if (!user) { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <img src="${user.photoURL || ''}" onerror="this.style.display='none'">
+    <span>${user.displayName}</span>
+    <button class="ghost" id="logoutBtn">로그아웃</button>
+  `;
+  document.getElementById('logoutBtn').onclick = () => auth.signOut();
+}
+
+// 최초 로그인 시(계정 문서가 없을 때만) ensureAccount() 콜러블 함수가 계정을 생성한다.
+// 이때 지금까지 게스트로 거래하던 localStorage 데이터(balance/holdings/history)를
+// 그대로 넘겨서 로그인 후에도 이어서 거래할 수 있게 한다. 이미 계정이 있으면(재로그인)
+// 서버가 아무것도 하지 않으므로 기존 클라우드 데이터가 게스트 데이터로 덮어써지지 않는다.
+async function ensureAccount() {
+  try {
+    const res = await ensureAccountFn({
+      balance: guestData.balance,
+      holdings: guestData.holdings,
+      history: guestData.history,
+    });
+    if (res.data?.migrated) {
+      // 이관 완료 - 로컬 게스트 지갑은 초기화(이제 클라우드 계정이 이어받았음)
+      localStorage.removeItem(GUEST_STORAGE_KEY);
+      guestData = loadGuestData();
+      showMigrateNotice();
+    }
+  } catch (e) {
+    console.warn('ensureAccount 실패:', e.message);
+  }
+}
+
+function showMigrateNotice() {
+  const el = document.getElementById('migrateNotice');
+  if (!el) return;
+  el.style.display = 'flex';
+  setTimeout(() => { el.style.display = 'none'; }, 6000);
+}
+
+// ====================== 실시간 구독 ======================
+function listenToUser(uid) {
+  db.collection('users').doc(uid).onSnapshot((doc) => {
+    if (!doc.exists) return;
+    const data = doc.data();
+    window.__myUser = data;
+    document.getElementById('balanceVal').textContent = fmt(data.balance) + '원';
+    updatePortfolioValue();
+  });
+}
+
+function listenToCoins() {
+  db.collection('coins').onSnapshot((snap) => {
+    snap.forEach(doc => coinsCache[doc.id] = doc.data());
+    renderCoinGrid();
+    updatePortfolioValue();
+    if (selectedCoinId) refreshModalPrice();
+  });
+}
+
+function listenToHistory(uid) {
+  db.collection('transactions')
+    .where('uid', '==', uid)
+    .orderBy('timestamp', 'desc')
+    .limit(30)
+    .onSnapshot((snap) => {
+      const rows = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        const time = d.timestamp ? d.timestamp.toDate().toLocaleString('ko-KR') : '-';
+        rows.push(`<tr>
+          <td>${time}</td>
+          <td>${coinsCache[d.streamerId]?.name || d.streamerId}</td>
+          <td>${d.type === 'buy' ? '매수' : '매도'}</td>
+          <td>${d.qty}</td>
+          <td>${fmt(d.price)}원</td>
+        </tr>`);
+      });
+      document.getElementById('historyBody').innerHTML = rows.join('');
+    });
+}
+
+// ====================== 렌더링 ======================
+const STREAMER_ORDER = STREAMER_LIST.map(s => s.streamerId);
+function renderCoinGrid() {
+  const grid = document.getElementById('coinGrid');
+  const ids = Object.keys(coinsCache).sort((a, b) => {
+    const ia = STREAMER_ORDER.indexOf(a), ib = STREAMER_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+  grid.innerHTML = ids.map(id => {
+    const c = coinsCache[id];
+    const meta = STREAMER_META[id] || {};
+    const color = meta.color || '#888';
+    const isLive = c.status === 'live';
+    return `
+      <div class="coin-card" style="--member-color:${color};border-left:4px solid ${color};background:linear-gradient(135deg, ${color}22, var(--card) 65%);" onclick="openModal('${id}')">
+        <div class="coin-top">
+          ${meta.file ? `<img class="coin-icon" src="images/${meta.file}" alt="${meta.name || c.name}" onerror="this.style.display='none'">` : ''}
+          <span class="coin-name">${meta.name || c.name}</span>
+          <span class="coin-status ${isLive ? 'status-live' : 'status-closed'}">${isLive ? '방송중' : '방송종료'}</span>
+        </div>
+        <div class="coin-price">${fmt(c.currentPrice || 0)}</div>
+        ${renderSparkline(c.priceHistory)}
+        <div class="coin-sub">${isLive ? '실시간 분당 채팅수' : `오늘 평균 분당 ${fmt(c.frozenPrice || 0)}회로 고정`}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// 최근 분당 채팅수 흐름 미니 차트 (chatservice가 coins/{id}.priceHistory에 저장하는 {t,v} 샘플 사용)
+function renderSparkline(history) {
+  if (!Array.isArray(history) || history.length < 2) {
+    return '<svg class="coin-spark spark-flat" viewBox="0 0 100 36" preserveAspectRatio="none"></svg>';
+  }
+  const values = history.map(p => p.v);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const stepX = 100 / (values.length - 1);
+  const points = values.map((v, i) => {
+    const x = (i * stepX).toFixed(2);
+    const y = (32 - ((v - min) / range) * 28).toFixed(2); // 위아래 여백 2px씩
+    return `${x},${y}`;
+  }).join(' ');
+  const trendClass = values[values.length - 1] >= values[0] ? 'spark-up' : 'spark-down';
+  return `<svg class="coin-spark ${trendClass}" viewBox="0 0 100 36" preserveAspectRatio="none">
+    <polyline points="${points}" />
+  </svg>`;
+}
+
+function fmt(n) { return (n || 0).toLocaleString('ko-KR'); }
+
+function updatePortfolioValue() {
+  if (!window.__myUser) return;
+  const holdings = window.__myUser.holdings || {};
+  let total = 0;
+  for (const [id, qty] of Object.entries(holdings)) {
+    const price = coinsCache[id]?.currentPrice || 0;
+    total += price * qty;
+  }
+  document.getElementById('portfolioVal').textContent = fmt(total) + '원';
+  document.getElementById('totalVal').textContent = fmt(total + (window.__myUser.balance || 0)) + '원';
+}
+
+// ====================== 거래 모달 ======================
+function openModal(id) {
+  selectedCoinId = id;
+  const c = coinsCache[id];
+  document.getElementById('modalTitle').textContent = STREAMER_META[id]?.name || c.name;
+  document.getElementById('modalMsg').textContent = '';
+  document.getElementById('modalQty').value = '';
+  refreshModalPrice();
+  document.getElementById('modalBg').classList.add('open');
+}
+function refreshModalPrice() {
+  const c = coinsCache[selectedCoinId];
+  if (!c) return;
+  document.getElementById('modalPrice').textContent = fmt(c.currentPrice) + '원';
+  const holding = (window.__myUser?.holdings || {})[selectedCoinId] || 0;
+  document.getElementById('modalHolding').textContent = holding + '주';
+  updateModalTotal();
+}
+document.getElementById('modalQty').addEventListener('input', updateModalTotal);
+function updateModalTotal() {
+  const qty = parseInt(document.getElementById('modalQty').value) || 0;
+  const price = coinsCache[selectedCoinId]?.currentPrice || 0;
+  document.getElementById('modalTotal').textContent = fmt(qty * price) + '원';
+}
+document.getElementById('btnClose').onclick = () => document.getElementById('modalBg').classList.remove('open');
+
+document.getElementById('btnBuy').onclick = () => trade('buy');
+document.getElementById('btnSell').onclick = () => trade('sell');
+
+// 로그인 상태: 매수/매도는 Cloud Function(callable) trade()가 서버에서 처리한다.
+// 클라이언트가 balance/holdings를 직접 계산해 Firestore에 write하던 예전 방식은
+// 개발자도구로 얼마든지 조작 가능했기 때문에 제거했다 (firestore.rules도 users/transactions
+// 클라이언트 write를 전면 차단하도록 함께 변경됨).
+//
+// 게스트(비로그인) 상태: 서버에 저장되는 공유 자산이 아니라 이 브라우저에만 있는
+// localStorage 데이터라서 클라이언트 계산이어도 조작 리스크가 없다 (조작해도 본인
+// 로컬 데이터만 바뀔 뿐, 서버/다른 사용자와는 무관함).
+async function trade(type) {
+  const qty = parseInt(document.getElementById('modalQty').value);
+  const msgEl = document.getElementById('modalMsg');
+  if (!qty || qty <= 0) { msgEl.textContent = '수량을 정확히 입력하세요.'; return; }
+
+  const coinId = selectedCoinId;
+
+  if (!currentUser) {
+    tradeLocal(type, coinId, qty, msgEl);
+    return;
+  }
+
+  try {
+    await tradeFn({ coinId, type, qty });
+    msgEl.style.color = 'lightgreen';
+    msgEl.textContent = type === 'buy' ? '매수 완료!' : '매도 완료!';
+    document.getElementById('modalQty').value = '';
+  } catch (e) {
+    msgEl.style.color = 'salmon';
+    msgEl.textContent = e.message || '거래에 실패했습니다.';
+  }
+}
+
+function tradeLocal(type, coinId, qty, msgEl) {
+  const price = coinsCache[coinId]?.currentPrice || 0;
+  const cost = price * qty;
+  const holdings = { ...guestData.holdings };
+  const currentQty = holdings[coinId] || 0;
+
+  if (type === 'buy') {
+    if (guestData.balance < cost) { msgEl.style.color = 'salmon'; msgEl.textContent = '잔액이 부족합니다.'; return; }
+    holdings[coinId] = currentQty + qty;
+    guestData.balance -= cost;
+  } else {
+    if (currentQty < qty) { msgEl.style.color = 'salmon'; msgEl.textContent = '보유 수량이 부족합니다.'; return; }
+    holdings[coinId] = currentQty - qty;
+    guestData.balance += cost;
+  }
+  guestData.holdings = holdings;
+  guestData.history.push({ streamerId: coinId, type, qty, price, timestamp: Date.now() });
+  guestData.history = guestData.history.slice(-200); // 무한정 쌓이지 않도록 상한
+  saveGuestData(guestData);
+  refreshGuestUI();
+
+  msgEl.style.color = 'lightgreen';
+  msgEl.textContent = type === 'buy' ? '매수 완료! (로컬 저장)' : '매도 완료! (로컬 저장)';
+  document.getElementById('modalQty').value = '';
+}
+</script>
+</body>
+</html>

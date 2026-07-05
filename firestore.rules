@@ -1,0 +1,66 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── 천타코인(이 프로젝트) ──
+    match /coins/{coinId} {
+      // 로그인하지 않은 게스트도 실시간 시세를 봐야 하므로 공개 읽기
+      allow read: if true;
+      allow write: if false; // 서버(chatservice의 Admin SDK)만 수정
+    }
+
+    // users/{uid} 문서는 천타코인과 천타버스 팡팡이 같은 Firebase 프로젝트를 쓰면서
+    // 공유한다. 팡팡은 bestScore/bgmVolume/sfxVolume/nickname 필드를 클라이언트에서
+    // 직접 read/write하고, 코인은 balance/holdings를 서버(Admin SDK)에서만 건드려야
+    // 하므로, 필드 단위로 나눠서 막는다.
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+
+      // 최초 문서 생성: 팡팡 클라이언트가 만드는 경우는 balance/holdings가 없어야 하고,
+      // 천타코인 쪽 생성(게스트 데이터 이관 포함)은 ensureAccount()가 Admin SDK로 하므로
+      // 이 규칙 자체를 우회한다 (여기 통과 못해도 상관 없음).
+      allow create: if request.auth != null && request.auth.uid == uid
+                    && !('balance' in request.resource.data)
+                    && !('holdings' in request.resource.data);
+
+      // 클라이언트(팡팡)는 자기 문서를 계속 수정할 수 있지만, balance/holdings는
+      // 절대 건드릴 수 없다 (trade()/ensureAccount() 같은 Admin SDK 콜러블만 가능).
+      allow update: if request.auth != null && request.auth.uid == uid
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                        .hasAny(['balance', 'holdings']);
+    }
+
+    match /transactions/{txId} {
+      allow read: if request.auth != null && resource.data.uid == request.auth.uid;
+      // 거래 기록은 trade()/ensureAccount() 콜러블 함수 안에서만 생성됨
+      // (Admin SDK는 이 규칙을 우회함).
+      allow create: if false;
+    }
+
+    // ── 천타버스 팡팡 (같은 프로젝트를 공유하는 다른 앱) ──
+    // index.html에 적힌 규칙을 그대로 옮겨왔습니다. 실제 콘솔에 이미 배포된 규칙과
+    // 다를 수 있으니, 배포 전에 Firebase 콘솔 → Firestore → 규칙 탭에서 현재 값과
+    // 꼭 대조해보세요 (특히 all_time_best는 index.html 주석에는 없었지만 코드에서
+    // 실제로 read/write하고 있어서, daily_best/weekly_best와 같은 패턴으로 추가해뒀습니다).
+    match /nicknames/{nickname} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null &&
+        (resource == null || resource.data.uid == request.auth.uid);
+    }
+    match /daily_best/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+        request.resource.data.uid == request.auth.uid;
+    }
+    match /weekly_best/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+        request.resource.data.uid == request.auth.uid;
+    }
+    match /all_time_best/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null &&
+        request.resource.data.uid == request.auth.uid;
+    }
+  }
+}

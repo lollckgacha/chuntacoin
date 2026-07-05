@@ -1,0 +1,19 @@
+{
+  "name": "chuntacoin-chatservice",
+  "private": true,
+  "description": "천타버스 코인 거래소 - SOOP 실시간 채팅 카운트 상시 연결 서비스 (Cloud Run)",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "test:lifecycle": "node test_lifecycle_simulation.js",
+    "test:chat": "node test_chat_connection.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "firebase-admin": "^12.6.0",
+    "ws": "^8.18.0"
+  }
+}
