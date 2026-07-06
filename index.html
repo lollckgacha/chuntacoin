@@ -369,7 +369,7 @@
       </div>
       <div class="chart-wrap" id="chartWrap">
         <div class="chart-toolbar">
-          <button class="ghost" id="chartModeToggle" type="button">라인 보기</button>
+          <button class="ghost" id="chartModeToggle" type="button">캔들 보기</button>
         </div>
         <svg id="detailChart" viewBox="0 0 100 40" preserveAspectRatio="none"></svg>
         <div class="chart-tooltip" id="chartTooltip"></div>
@@ -888,7 +888,7 @@ function renderDetailCountdown() {
 // ====================== 코인 상세 차트 (캔들/라인 토글, 호버 툴팁, 휠 확대축소) ======================
 const CHART_ZOOM_LEVELS = [1, 2, 5, 10, 15, 30]; // 캔들 1개당 분(分) 단위
 let chartZoomIndex = 0;
-let chartMode = 'candle'; // 'candle' | 'line'
+let chartMode = 'line'; // 'candle' | 'line' (기본값: 최초 버전처럼 깔끔한 선 그래프)
 let lastChartCandles = []; // 마지막으로 그린 캔들 목록 (툴팁 조회용)
 
 // 원본 1분 단위 시세 히스토리를 groupMinutes 단위로 묶어 OHLC 캔들로 변환한다.
