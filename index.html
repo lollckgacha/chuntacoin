@@ -228,6 +228,28 @@
     text-align: center; font-size: 12px; color: var(--muted);
     background: rgba(134,140,156,0.1); border-radius: 8px; padding: 8px; margin: 8px 0;
   }
+  #recentPriceTable { margin-top: 20px; }
+  #recentPriceTable h3 { font-size: 14px; margin-bottom: 8px; color: var(--muted); font-weight: 700; }
+
+  /* ====================== 데스크탑: 거래소 탭 리스트+상세 나란히 배치 ====================== */
+  @media (min-width: 900px) {
+    #tab-exchange.active {
+      display: flex; align-items: flex-start; gap: 20px;
+      padding: 0 24px 24px;
+    }
+    #tab-exchange.active #coinList { flex: 0 0 380px; padding: 0; max-height: 78vh; overflow-y: auto; }
+    #tab-exchange.active #detailBg {
+      position: static; display: block; background: none;
+      flex: 1; min-width: 0;
+    }
+    #tab-exchange.active #detailCard {
+      width: 100%; max-width: none; max-height: none; overflow: visible;
+      position: sticky; top: 130px;
+    }
+    #tab-exchange.active .detail-header { flex-direction: row; text-align: left; }
+    #tab-exchange.active .detail-icon { width: 56px; height: 56px; }
+    #tab-exchange.active .detail-close-btn { display: none; }
+  }
 
   /* ====================== 모바일 반응형 ====================== */
   @media (max-width: 640px) {
@@ -302,6 +324,43 @@
 
 <div id="tab-exchange" class="tab-panel active">
   <div id="coinList"></div>
+
+  <!-- 코인 상세 화면 (데스크탑: 리스트 옆에 항상 표시 / 모바일: 탭하면 풀스크린으로 열림) -->
+  <div id="detailBg">
+    <div id="detailCard">
+      <div class="detail-header">
+        <img id="detailIcon" class="detail-icon">
+        <div class="detail-name" id="detailName">코인을 선택하세요</div>
+        <div class="detail-countdown" id="detailCountdown" style="display:none;"></div>
+      </div>
+      <div class="detail-price-row">
+        <div class="detail-price" id="detailPrice">-</div>
+        <div class="detail-change" id="detailChange">-</div>
+      </div>
+      <svg id="detailChart" viewBox="0 0 100 40" preserveAspectRatio="none"></svg>
+      <div id="detailNotTradable" class="not-tradable-note" style="display:none;">방송이 종료되어 지금은 거래할 수 없습니다.</div>
+
+      <div class="row"><span>보유수량</span><span id="detailHolding">-</span></div>
+      <input type="number" id="detailQty" placeholder="수량 입력" min="1" step="1">
+      <div class="row"><span>매수 시 필요 금액</span><span id="detailBuyTotal">0원</span></div>
+      <div class="row"><span>매도 시 실수령액</span><span id="detailSellTotal">0원</span></div>
+      <div class="fee-note">* 매도 시 1% 수수료가 차감된 금액입니다.</div>
+      <div class="actions" style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn-buy" id="detailBtnBuy" style="flex:1;">매수</button>
+        <button class="btn-sell" id="detailBtnSell" style="flex:1;">매도</button>
+      </div>
+      <div id="detailMsg" style="font-size:13px;margin-top:8px;min-height:18px;"></div>
+      <button class="ghost detail-close-btn" id="detailBtnClose">닫기</button>
+
+      <div id="recentPriceTable">
+        <h3>최근 가격 변동</h3>
+        <table>
+          <thead><tr><th>시간</th><th>가격</th><th>변동</th></tr></thead>
+          <tbody id="recentPriceBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="tab-assets" class="tab-panel">
@@ -344,35 +403,6 @@
     <h3>👤 로그인</h3>
     <p>로그인 없이도 게스트로 바로 거래할 수 있습니다. Google 로그인을 하면 PC/모바일 기기 간 데이터가 연동되고, 브라우저 쿠키를 삭제해도 잔액/보유내역이 유지됩니다.</p>
     <p class="muted">모든 시간 표시는 한국 표준시(KST) 기준입니다.</p>
-  </div>
-</div>
-
-<!-- 코인 상세 화면 -->
-<div id="detailBg">
-  <div id="detailCard">
-    <div class="detail-header">
-      <img id="detailIcon" class="detail-icon">
-      <div class="detail-name" id="detailName">-</div>
-      <div class="detail-countdown" id="detailCountdown" style="display:none;"></div>
-    </div>
-    <div class="detail-price-row">
-      <div class="detail-price" id="detailPrice">-</div>
-      <div class="detail-change" id="detailChange">-</div>
-    </div>
-    <svg id="detailChart" viewBox="0 0 100 40" preserveAspectRatio="none"></svg>
-    <div id="detailNotTradable" class="not-tradable-note" style="display:none;">방송이 종료되어 지금은 거래할 수 없습니다.</div>
-
-    <div class="row"><span>보유수량</span><span id="detailHolding">-</span></div>
-    <input type="number" id="detailQty" placeholder="수량 입력" min="1" step="1">
-    <div class="row"><span>매수 시 필요 금액</span><span id="detailBuyTotal">0원</span></div>
-    <div class="row"><span>매도 시 실수령액</span><span id="detailSellTotal">0원</span></div>
-    <div class="fee-note">* 매도 시 1% 수수료가 차감된 금액입니다.</div>
-    <div class="actions" style="display:flex;gap:8px;margin-top:12px;">
-      <button class="btn-buy" id="detailBtnBuy" style="flex:1;">매수</button>
-      <button class="btn-sell" id="detailBtnSell" style="flex:1;">매도</button>
-    </div>
-    <div id="detailMsg" style="font-size:13px;margin-top:8px;min-height:18px;"></div>
-    <button class="ghost detail-close-btn" id="detailBtnClose">닫기</button>
   </div>
 </div>
 
@@ -619,6 +649,11 @@ function listenToCoins() {
     renderCoinList();
     updatePortfolioValue();
     renderAssets();
+    // 데스크탑에서는 리스트 옆에 상세 패널이 항상 보이므로, 처음엔 1번 코인을 기본으로 채워둔다.
+    if (!selectedCoinId && window.innerWidth >= 900) {
+      const ids = sortedCoinIds();
+      if (ids.length > 0) selectedCoinId = ids[0];
+    }
     if (selectedCoinId) refreshDetail();
   });
 }
@@ -751,14 +786,13 @@ function openDetail(id) {
   document.getElementById('detailQty').value = '';
   refreshDetail();
   document.getElementById('detailBg').classList.add('open');
-  clearInterval(detailCountdownTimer);
-  detailCountdownTimer = setInterval(renderDetailCountdown, 1000);
 }
 function closeDetail() {
   document.getElementById('detailBg').classList.remove('open');
-  clearInterval(detailCountdownTimer);
 }
 document.getElementById('detailBtnClose').onclick = closeDetail;
+// 카운트다운은 모달 열림/닫힘과 무관하게 계속 돌린다 (데스크탑은 상세 패널이 항상 보이므로).
+detailCountdownTimer = setInterval(renderDetailCountdown, 1000);
 
 function refreshDetail() {
   const c = coinsCache[selectedCoinId];
@@ -780,6 +814,7 @@ function refreshDetail() {
 
   renderDetailChart(c.priceHistory);
   renderDetailCountdown();
+  renderRecentPriceTable(c.priceHistory);
 
   const holding = (window.__myUser?.holdings || {})[selectedCoinId] || 0;
   document.getElementById('detailHolding').textContent = holding + '주';
@@ -823,6 +858,24 @@ function renderDetailChart(history) {
     return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(barW * 0.65).toFixed(2)}" height="${h.toFixed(2)}" fill="${up ? 'var(--up)' : 'var(--down)'}" />`;
   }).join('');
   svg.innerHTML = bars;
+}
+
+// 빗썸의 "체결내역"과 비슷하게, 최근 분당 가격 변동을 표로 보여준다 (최신순 최대 15개)
+function renderRecentPriceTable(history) {
+  const body = document.getElementById('recentPriceBody');
+  if (!Array.isArray(history) || history.length === 0) { body.innerHTML = ''; return; }
+  const rows = [...history].reverse().slice(0, 15).map((p, i, arr) => {
+    const prev = arr[i + 1]?.v ?? p.v;
+    const diff = p.v - prev;
+    const dir = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+    const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '-';
+    return `<tr>
+      <td>${formatKST(p.t)}</td>
+      <td>${fmt(p.v)}원</td>
+      <td class="coin-row-change ${dir}" style="min-width:0;text-align:left;">${arrow} ${fmt(Math.abs(diff))}</td>
+    </tr>`;
+  });
+  body.innerHTML = rows.join('');
 }
 
 document.getElementById('detailQty').addEventListener('input', updateDetailTotal);
