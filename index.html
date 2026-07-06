@@ -232,6 +232,21 @@
     background: #0b0c10; border: 1px solid var(--border); border-radius: 8px;
     color: var(--text); font-size: 16px;
   }
+  input[type="number"] { -moz-appearance: textfield; padding-right: 36px; }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none; margin: 0;
+  }
+  .qty-input-wrap { position: relative; }
+  .qty-input-wrap input { margin: 12px 0; }
+  .qty-clear-btn {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 24px; height: 24px; padding: 0; border-radius: 50%;
+    background: rgba(255,255,255,0.08); color: var(--muted);
+    font-size: 13px; font-weight: 700; line-height: 1; border: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .qty-clear-btn:hover { background: rgba(255,255,255,0.16); color: var(--text); }
   .actions { display: flex; gap: 8px; margin-top: 16px; }
   .actions button { flex: 1; }
   .btn-buy { background: var(--up); color: #250406; }
@@ -453,7 +468,10 @@
 
       <div class="row"><span>현재 거래량 (분당 채팅수)</span><span id="detailVolume">-</span></div>
       <div class="row"><span>보유수량</span><span id="detailHolding">-</span></div>
-      <input type="number" id="detailQty" placeholder="수량 입력" min="1" step="1">
+      <div class="qty-input-wrap">
+        <input type="number" id="detailQty" placeholder="수량 입력" min="1" step="1">
+        <button type="button" class="qty-clear-btn" id="qtyClearBtn">✕</button>
+      </div>
 
       <div class="quick-btns-row">
         <span class="quick-btns-label buy">매수</span>
@@ -1196,6 +1214,10 @@ function renderRecentPriceTable(history) {
 }
 
 document.getElementById('detailQty').addEventListener('input', updateDetailTotal);
+document.getElementById('qtyClearBtn').onclick = () => {
+  document.getElementById('detailQty').value = '';
+  updateDetailTotal();
+};
 function updateDetailTotal() {
   const qty = parseInt(document.getElementById('detailQty').value) || 0;
   const price = coinsCache[selectedCoinId]?.currentPrice || 0;
