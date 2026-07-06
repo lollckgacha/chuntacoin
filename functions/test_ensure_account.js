@@ -10,7 +10,7 @@
 process.env.GCLOUD_PROJECT = process.env.GCLOUD_PROJECT || "demo-chuntacoin";
 
 const { _internal } = require("./index.js");
-const { ensureAccountHandler, db } = _internal;
+const { ensureAccountHandler, claimDailyBonusHandler, todayKST, DAILY_BONUS, db } = _internal;
 
 let fails = 0;
 function assertEqual(actual, expected, label) {
@@ -71,7 +71,7 @@ async function main() {
   assertEqual(res3.migrated, true, "이상값 입력도 계정은 생성됨");
   const userDoc3 = await db.collection("users").doc(uid2).get();
   const userData3 = userDoc3.data();
-  assertEqual(userData3.balance, 100000, "음수 balance는 기본값(10만원)으로 대체");
+  assertEqual(userData3.balance, 300000, "음수 balance는 기본값(30만원)으로 대체");
   assertEqual(userData3.holdings, { dalta: 3 }, "음수/소수/문자열 holdings는 걸러지고 유효한 것만 반올림 반영");
 
   console.log("\n--- 4. 천타팡(같은 프로젝트 공유 앱)이 이미 만들어둔 문서 - balance 없음 ---");
@@ -102,6 +102,22 @@ async function main() {
   assertEqual(res5.migrated, false, "balance가 생긴 뒤로는 재로그인으로 인식");
   const userDoc5 = await db.collection("users").doc(uid3).get();
   assertEqual(userDoc5.data().balance, 95000, "재로그인 시도로 balance가 덮어써지지 않음");
+
+  console.log("\n--- 6. 매일 출석 보상 ---");
+  const uid4 = "daily_bonus_test_uid";
+  await db.collection("users").doc(uid4).delete().catch(() => {});
+  await ensureAccountHandler({ auth: { uid: uid4, token: {} }, data: { balance: 300000, holdings: {}, history: [] } });
+
+  const claim1 = await claimDailyBonusHandler({ auth: { uid: uid4 } });
+  assertEqual(claim1.claimed, true, "첫 출석 보상 지급됨");
+  assertEqual(claim1.balance, 300000 + DAILY_BONUS, "첫 출석 보상 반영된 잔액");
+
+  const claim2 = await claimDailyBonusHandler({ auth: { uid: uid4 } });
+  assertEqual(claim2.claimed, false, "같은 날 재요청은 중복 지급 안 됨");
+  assertEqual(claim2.balance, 300000 + DAILY_BONUS, "중복 요청 시 잔액 변화 없음");
+
+  const userDoc4b = await db.collection("users").doc(uid4).get();
+  assertEqual(userDoc4b.data().lastAttendanceDate, todayKST(), "lastAttendanceDate가 오늘 날짜로 기록됨");
 
   console.log("\n=================================");
   if (fails > 0) {

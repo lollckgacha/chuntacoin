@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>천타버스 코인 거래소</title>
+<style>
+  :root {
+    /* 천양(대표 멤버) 퍼스널컬러 + 블랙 위주 테마 */
+    --bg: #07080a;
+    --card: #14161c;
+    --accent: #18D7F2;
+    --accent-dim: rgba(24,215,242,0.15);
+    --up: #ff4d5e;   /* 양봉(상승) */
+    --down: #4d8dff; /* 음봉(하락) */
+    --text: #eef1f5;
+    --muted: #868c9c;
+    --border: #23262f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Pretendard', 'Apple SD Gothic Neo', -apple-system, sans-serif;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 20;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-logo { width: 30px; height: 30px; border-radius: 8px; object-fit: cover; }
+  header h1 { font-size: 18px; margin: 0; }
+  #authArea { display: flex; align-items: center; gap: 10px; }
+  .auth-badge {
+    font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 20px;
+  }
+  .auth-badge.guest { background: rgba(134,140,156,0.15); color: var(--muted); }
+  .auth-badge.logged-in { background: var(--accent-dim); color: var(--accent); }
+  button {
+    background: var(--accent);
+    color: #04121a;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); font-weight: 500; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ====================== 탭 ====================== */
+  #tabBar {
+    display: flex; gap: 4px;
+    padding: 10px 24px 0;
+    position: sticky; top: 57px; background: var(--bg); z-index: 15;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-btn {
+    background: transparent; color: var(--muted); font-weight: 700;
+    padding: 10px 18px; border-radius: 10px 10px 0 0;
+    border-bottom: 2px solid transparent;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom: 2px solid var(--accent); background: var(--accent-dim); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  #balanceBar {
+    display: flex;
+    gap: 24px;
+    padding: 16px 24px;
+    background: var(--card);
+    margin: 16px 24px;
+    border-radius: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  #balanceBar .stat { display: flex; flex-direction: column; }
+  #balanceBar .stat .label { font-size: 12px; color: var(--muted); }
+  #balanceBar .stat .value { font-size: 20px; font-weight: 700; }
+  #dailyBonusMsg { font-size: 12px; color: var(--accent); margin-left: auto; }
+
+  /* ====================== 거래소 탭: 코인 리스트 ====================== */
+  #coinList { padding: 0 24px 24px; display: flex; flex-direction: column; gap: 8px; }
+  .coin-row {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--member-color, var(--border));
+    border-radius: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .coin-row:hover { border-color: var(--member-color, var(--accent)); transform: translateX(2px); }
+  .coin-row-icon {
+    width: 36px; height: 36px; border-radius: 50%;
+    object-fit: cover; object-position: center top;
+    border: 2px solid var(--member-color, var(--border));
+    flex-shrink: 0; background: var(--bg);
+  }
+  .coin-row-name { font-weight: 700; font-size: 15px; display: flex; flex-direction: column; gap: 2px; min-width: 84px; }
+  .coin-row-status { font-size: 10px; font-weight: 500; color: var(--muted); }
+  .coin-row-status.live { color: var(--up); }
+  .coin-row-price { font-size: 17px; font-weight: 800; margin-left: auto; text-align: right; min-width: 90px; }
+  .coin-row-change { font-size: 13px; font-weight: 700; text-align: right; min-width: 100px; }
+  .coin-row-change.up { color: var(--up); }
+  .coin-row-change.down { color: var(--down); }
+  .coin-row-change.flat { color: var(--muted); }
+
+  /* ====================== 자산 탭 ====================== */
+  #assetsList { padding: 0 24px 24px; display: flex; flex-direction: column; gap: 8px; }
+  .asset-row {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--card); border: 1px solid var(--border);
+    border-left: 3px solid var(--member-color, var(--border));
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .asset-row-main { min-width: 90px; }
+  .asset-row-name { font-weight: 700; font-size: 15px; }
+  .asset-row-qty { font-size: 12px; color: var(--muted); }
+  .asset-row-prices { margin-left: auto; text-align: right; font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .asset-row-prices .diff { font-size: 14px; font-weight: 800; }
+  .diff.up { color: var(--up); }
+  .diff.down { color: var(--down); }
+  .empty-state { padding: 40px 20px; text-align: center; color: var(--muted); }
+
+  /* ====================== 설명서 탭 ====================== */
+  #guideContent { padding: 0 24px 40px; max-width: 720px; }
+  #guideContent h3 { color: var(--accent); margin: 24px 0 8px; font-size: 15px; }
+  #guideContent h3:first-child { margin-top: 0; }
+  #guideContent p, #guideContent li { font-size: 13px; color: var(--text); line-height: 1.7; }
+  #guideContent ul { margin: 4px 0; padding-left: 20px; }
+  #guideContent .formula {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; font-size: 13px; color: var(--accent); font-weight: 700;
+    margin: 6px 0;
+  }
+  #guideContent .muted { color: var(--muted); font-size: 12px; }
+
+  #historyPanel {
+    margin: 0 24px 40px;
+    background: var(--card);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid var(--border);
+  }
+  #historyPanel h3 { margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+
+  #guestBanner {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap;
+    margin: 16px 24px 0;
+    padding: 12px 16px;
+    background: var(--accent-dim);
+    border: 1px solid rgba(24,215,242,0.35);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  #guestBanner p { margin: 0; color: var(--text); }
+  #guestBanner .muted { color: var(--muted); font-size: 12px; }
+  #guestBanner button { flex-shrink: 0; }
+
+  #migrateNotice {
+    display: flex; align-items: center;
+    margin: 16px 24px 0;
+    padding: 12px 16px;
+    background: rgba(74,222,128,0.12);
+    border: 1px solid rgba(74,222,128,0.4);
+    border-radius: 10px;
+    font-size: 13px;
+  }
+  #migrateNotice p { margin: 0; color: #4ade80; font-weight: 700; }
+
+  /* ====================== 상세 모달 ====================== */
+  #detailBg {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  #detailBg.open { display: flex; }
+  .row { display: flex; justify-content: space-between; margin: 8px 0; font-size: 14px; color: var(--muted); }
+  input {
+    width: 100%; padding: 10px; margin: 12px 0;
+    background: #0b0c10; border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 16px;
+  }
+  .actions { display: flex; gap: 8px; margin-top: 16px; }
+  .actions button { flex: 1; }
+  .btn-buy { background: var(--up); color: #250406; }
+  .btn-sell { background: var(--down); color: #04122a; }
+  .fee-note { font-size: 11px; color: var(--muted); margin-top: -6px; margin-bottom: 8px; }
+
+  #detailCard {
+    background: var(--card); border-radius: 18px; padding: 24px;
+    width: 360px; max-width: 92vw; max-height: 90vh; overflow-y: auto;
+  }
+  .detail-header { display: flex; flex-direction: column; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .detail-icon {
+    width: 84px; height: 84px; border-radius: 50%;
+    object-fit: cover; object-position: center top;
+    border: 3px solid var(--member-color, var(--accent));
+  }
+  .detail-name { font-size: 20px; font-weight: 800; }
+  .detail-countdown {
+    font-size: 12px; color: var(--accent); background: var(--accent-dim);
+    padding: 4px 12px; border-radius: 20px; font-weight: 700;
+  }
+  .detail-price-row { text-align: center; margin: 12px 0; }
+  .detail-price { font-size: 32px; font-weight: 900; }
+  .detail-change { font-size: 14px; font-weight: 700; margin-top: 4px; }
+  #detailChart { width: 100%; height: 90px; display: block; margin: 12px 0; }
+  .detail-close-btn { width: 100%; margin-top: 14px; }
+  .not-tradable-note {
+    text-align: center; font-size: 12px; color: var(--muted);
+    background: rgba(134,140,156,0.1); border-radius: 8px; padding: 8px; margin: 8px 0;
+  }
+
+  /* ====================== 모바일 반응형 ====================== */
+  @media (max-width: 640px) {
+    header { padding: 10px 14px; }
+    header h1 { font-size: 15px; }
+    #tabBar { padding: 8px 14px 0; top: 49px; }
+    .tab-btn { padding: 8px 12px; font-size: 13px; }
+    #balanceBar {
+      margin: 10px 14px;
+      padding: 12px 14px;
+      gap: 10px;
+    }
+    #balanceBar .stat .value { font-size: 15px; }
+    #dailyBonusMsg { width: 100%; margin-left: 0; }
+    #coinList, #assetsList, #guideContent { padding: 0 14px 20px; }
+    .coin-row { padding: 8px 10px; gap: 8px; }
+    .coin-row-icon { width: 30px; height: 30px; }
+    .coin-row-name { font-size: 13px; min-width: 60px; }
+    .coin-row-price { font-size: 14px; min-width: 70px; }
+    .coin-row-change { font-size: 11px; min-width: 76px; }
+    #historyPanel { margin: 0 14px 20px; padding: 12px; }
+    table { font-size: 11px; }
+    th, td { padding: 4px 3px; }
+    #detailCard { width: 100%; height: 100%; max-height: 100%; border-radius: 0; }
+    #detailBg { padding: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <img src="images/logo.png" class="brand-logo" onerror="this.style.display='none'">
+    <h1>천타버스 코인 거래소</h1>
+  </div>
+  <div id="authArea"></div>
+</header>
+
+<nav id="tabBar">
+  <button class="tab-btn active" data-tab="exchange" onclick="switchTab('exchange')">거래소</button>
+  <button class="tab-btn" data-tab="assets" onclick="switchTab('assets')">자산</button>
+  <button class="tab-btn" data-tab="guide" onclick="switchTab('guide')">설명서</button>
+</nav>
+
+<div id="guestBanner" style="display:none;">
+  <div>
+    <p>로그인 없이도 가상자산 30만원으로 바로 거래할 수 있어요.</p>
+    <p class="muted">Google 로그인을 하면 PC/모바일 기기 간 데이터가 연동되고, 브라우저 쿠키를 삭제해도 잔액과 보유내역이 유지돼요.</p>
+  </div>
+  <button id="loginBtn">Google로 로그인</button>
+</div>
+
+<div id="migrateNotice" style="display:none;">
+  <p>✅ 게스트로 거래하던 내역을 계정으로 그대로 이어받았어요!</p>
+</div>
+
+<div id="balanceBar">
+  <div class="stat">
+    <span class="label">보유 현금</span>
+    <span class="value" id="balanceVal">-</span>
+  </div>
+  <div class="stat">
+    <span class="label">평가 자산</span>
+    <span class="value" id="portfolioVal">-</span>
+  </div>
+  <div class="stat">
+    <span class="label">총 자산</span>
+    <span class="value" id="totalVal">-</span>
+  </div>
+  <div id="dailyBonusMsg"></div>
+</div>
+
+<div id="tab-exchange" class="tab-panel active">
+  <div id="coinList"></div>
+</div>
+
+<div id="tab-assets" class="tab-panel">
+  <div id="assetsList"></div>
+  <div id="historyPanel">
+    <h3>내 거래내역</h3>
+    <table>
+      <thead><tr><th>시간</th><th>코인</th><th>구분</th><th>수량</th><th>가격</th></tr></thead>
+      <tbody id="historyBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="tab-guide" class="tab-panel">
+  <div id="guideContent">
+    <h3>💰 코인 가격 산정 방식</h3>
+    <p>코인 가격은 오직 <b>분당 채팅수</b>로만 결정됩니다. 매수/매도는 가격에 영향을 주지 않습니다.</p>
+    <ul>
+      <li><b>방송 종료 중</b>: 거래 정지, 마지막 종가만 표시</li>
+      <li><b>방송 시작 후 첫 5분</b>: 이전 종가로 가격 고정 (거래는 가능)</li>
+      <li><b>방송 시작 5분 이후</b>: 최근 5분 평균 분당 채팅수로 현재가 계산, 매분 0초에 갱신, 변동 제한 없음</li>
+    </ul>
+    <div class="formula">현재가 = 1,000원 + 최근 5분 평균 분당 채팅수 × 100원</div>
+    <p>방송이 끝나면 즉시 거래가 정지되고, 첫 5분과 마지막 5분을 제외한 나머지 구간의 평균으로 종가가 계산됩니다.</p>
+    <div class="formula">종가 = 1,000원 + (첫/끝 5분 제외) 방송 평균 분당 채팅수 × 100원</div>
+
+    <h3>🔁 거래 방식</h3>
+    <p>거래소 탭에서 코인을 눌러 상세 화면에서 매수/매도할 수 있습니다. 방송이 종료된(거래 정지) 코인은 매수/매도가 불가능합니다.</p>
+
+    <h3>💸 수수료</h3>
+    <p>매도 시에만 <b>1%의 수수료</b>가 부과됩니다. 매수에는 수수료가 없습니다.</p>
+    <div class="formula">매도 실수령액 = 가격 × 수량 × (1 - 1%)</div>
+
+    <h3>🎁 지급 정책</h3>
+    <ul>
+      <li>사이트 최초 접속 시: <b>300,000원</b> 지급</li>
+      <li>매일(한국시간 기준 하루 1회) 접속 시: <b>30,000원</b> 추가 지급</li>
+    </ul>
+
+    <h3>👤 로그인</h3>
+    <p>로그인 없이도 게스트로 바로 거래할 수 있습니다. Google 로그인을 하면 PC/모바일 기기 간 데이터가 연동되고, 브라우저 쿠키를 삭제해도 잔액/보유내역이 유지됩니다.</p>
+    <p class="muted">모든 시간 표시는 한국 표준시(KST) 기준입니다.</p>
+  </div>
+</div>
+
+<!-- 코인 상세 화면 -->
+<div id="detailBg">
+  <div id="detailCard">
+    <div class="detail-header">
+      <img id="detailIcon" class="detail-icon">
+      <div class="detail-name" id="detailName">-</div>
+      <div class="detail-countdown" id="detailCountdown" style="display:none;"></div>
+    </div>
+    <div class="detail-price-row">
+      <div class="detail-price" id="detailPrice">-</div>
+      <div class="detail-change" id="detailChange">-</div>
+    </div>
+    <svg id="detailChart" viewBox="0 0 100 40" preserveAspectRatio="none"></svg>
+    <div id="detailNotTradable" class="not-tradable-note" style="display:none;">방송이 종료되어 지금은 거래할 수 없습니다.</div>
+
+    <div class="row"><span>보유수량</span><span id="detailHolding">-</span></div>
+    <input type="number" id="detailQty" placeholder="수량 입력" min="1" step="1">
+    <div class="row"><span>매수 시 필요 금액</span><span id="detailBuyTotal">0원</span></div>
+    <div class="row"><span>매도 시 실수령액</span><span id="detailSellTotal">0원</span></div>
+    <div class="fee-note">* 매도 시 1% 수수료가 차감된 금액입니다.</div>
+    <div class="actions" style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn-buy" id="detailBtnBuy" style="flex:1;">매수</button>
+      <button class="btn-sell" id="detailBtnSell" style="flex:1;">매도</button>
+    </div>
+    <div id="detailMsg" style="font-size:13px;margin-top:8px;min-height:18px;"></div>
+    <button class="ghost detail-close-btn" id="detailBtnClose">닫기</button>
+  </div>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+
+<script>
+// ====================== 설정 ======================
+// 천타버스 팡팡(chuntapang)과 같은 Firebase 프로젝트를 공유해서 사용합니다.
+const firebaseConfig = {
+  apiKey: "AIzaSyCkRMIw1AcnI9w9agNhTCwgS1xgA8FNUG0",
+  authDomain: "chunta-d80c5.firebaseapp.com",
+  projectId: "chunta-d80c5",
+  storageBucket: "chunta-d80c5.firebasestorage.app",
+  messagingSenderId: "806899242677",
+  appId: "1:806899242677:web:73ba1280459de4083390fc"
+};
+
+const INITIAL_BALANCE = 300000; // 최초 접속 시 지급액
+const DAILY_BONUS = 30000; // 매일(KST) 출석 보상
+const SELL_FEE_RATE = 0.01; // 매도 수수료 1%
+const GUEST_STORAGE_KEY = 'chuntacoin_guest_v1';
+
+// 천타버스 12명 실제 SOOP BJ ID + 코인 카드용 이미지/퍼스널컬러
+// (이미지는 images/ 폴더, 퍼스널컬러는 천타버스 팡팡 게임 코드에서 그대로 가져옴)
+const STREAMER_LIST = [
+  { streamerId: "chunyang",  name: "천양",   bjId: "243000",     file: "01.png", color: "#18D7F2" },
+  { streamerId: "imhaming",  name: "임하밍", bjId: "imha22",     file: "04.png", color: "#E88CFF" },
+  { streamerId: "kyaang",    name: "캬앙",   bjId: "kyaang123",  file: "08.png", color: "#F25555" },
+  { streamerId: "kimwello",  name: "김웰로", bjId: "wellro314",  file: "09.png", color: "#79D85A" },
+  { streamerId: "dalta",     name: "달타",   bjId: "dalta20",    file: "11.png", color: "#E88920" },
+  { streamerId: "chebi",     name: "체비",   bjId: "chebi2",     file: "06.png", color: "#98A3B3" },
+  { streamerId: "nanamoon",  name: "나나문", bjId: "nanamoon777",file: "03.png", color: "#F4F6FF" },
+  { streamerId: "moonmomo",  name: "문모모", bjId: "doormomo",   file: "05.png", color: "#8E57E8" },
+  { streamerId: "moca",      name: "모카",   bjId: "mocamu2",    file: "10.png", color: "#3E73FF" },
+  { streamerId: "kapu",      name: "카푸",   bjId: "kappuchan",  file: "07.png", color: "#c29b96" },
+  { streamerId: "madaom",    name: "마다옴", bjId: "madaomm",    file: "02.png", color: "#FFD84D" },
+  { streamerId: "plli",      name: "플리",   bjId: "plincess",   file: "12.png", color: "#b8e1f5" },
+];
+const STREAMER_META = Object.fromEntries(STREAMER_LIST.map(s => [s.streamerId, s]));
+const STREAMER_ORDER = STREAMER_LIST.map(s => s.streamerId);
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+// Cloud Functions는 region을 asia-northeast3로 배포했으므로 클라이언트도 동일 리전을 지정해야 함
+const functions = firebase.app().functions('asia-northeast3');
+const tradeFn = functions.httpsCallable('trade');
+const ensureAccountFn = functions.httpsCallable('ensureAccount');
+const claimDailyBonusFn = functions.httpsCallable('claimDailyBonus');
+
+let currentUser = null;
+let coinsCache = {};
+let selectedCoinId = null;
+let detailCountdownTimer = null;
+
+// ====================== 한국시간(KST) ======================
+function todayKST() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(new Date());
+}
+function formatKST(ts) {
+  if (!ts) return '-';
+  const d = ts?.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+}
+
+// ====================== 게스트(로컬 저장) 모드 ======================
+// 로그인하지 않아도 거래할 수 있도록 잔액/보유량/평단가/거래내역을 localStorage에 저장한다.
+// 로그인하면 Firestore(클라우드) 데이터로 전환되고, 로그아웃하면 다시 게스트 데이터로 돌아온다.
+function loadGuestData() {
+  try {
+    const raw = localStorage.getItem(GUEST_STORAGE_KEY);
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (!d.avgCost) d.avgCost = {};
+      if (d.lastAttendanceDate === undefined) d.lastAttendanceDate = null;
+      return d;
+    }
+  } catch (e) {}
+  return { balance: INITIAL_BALANCE, holdings: {}, avgCost: {}, history: [], lastAttendanceDate: null };
+}
+function saveGuestData(data) {
+  localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify(data));
+}
+let guestData = loadGuestData();
+
+// 게스트 최초 접속(오늘자 미접속) 시 매일 출석 보상 지급
+function applyGuestDailyBonus() {
+  const today = todayKST();
+  if (guestData.lastAttendanceDate !== today) {
+    guestData.balance += DAILY_BONUS;
+    guestData.lastAttendanceDate = today;
+    saveGuestData(guestData);
+    showDailyBonusMsg(DAILY_BONUS);
+  }
+}
+
+function showDailyBonusMsg(amount) {
+  const el = document.getElementById('dailyBonusMsg');
+  el.textContent = `🎁 출석 보상 ${fmt(amount)}원 지급!`;
+  setTimeout(() => { el.textContent = ''; }, 6000);
+}
+
+function renderGuestHistory() {
+  const rows = [...guestData.history]
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, 30)
+    .map(d => `<tr>
+      <td>${formatKST(d.timestamp)}</td>
+      <td>${STREAMER_META[d.streamerId]?.name || d.streamerId}</td>
+      <td>${d.type === 'buy' ? '매수' : '매도'}</td>
+      <td>${d.qty}</td>
+      <td>${fmt(d.price)}원</td>
+    </tr>`);
+  document.getElementById('historyBody').innerHTML = rows.join('');
+}
+
+function refreshGuestUI() {
+  window.__myUser = guestData;
+  document.getElementById('balanceVal').textContent = fmt(guestData.balance) + '원';
+  updatePortfolioValue();
+  renderGuestHistory();
+  renderAssets();
+  if (selectedCoinId) { refreshModalPrice(); refreshDetail(); }
+}
+
+// ====================== 탭 ======================
+function switchTab(tab) {
+  document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  if (tab === 'assets') renderAssets();
+}
+
+// ====================== 인증 ======================
+document.getElementById('loginBtn').onclick = () => {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(e => alert('로그인 실패: ' + e.message));
+};
+
+// 코인 시세는 로그인 여부와 무관하게 항상 공개로 구독한다.
+listenToCoins();
+
+// Firebase 인증 상태 확인이 끝나기 전에도 바로 게스트 모드로 보여준다
+// (인증 상태가 오면 아래 onAuthStateChanged가 필요시 로그인 상태로 갱신함)
+document.getElementById('guestBanner').style.display = 'flex';
+applyGuestDailyBonus();
+refreshGuestUI();
+
+auth.onAuthStateChanged(async (user) => {
+  if (user) {
+    currentUser = user;
+    document.getElementById('guestBanner').style.display = 'none';
+    renderAuthArea(user);
+    await ensureAccount();
+    await claimDailyBonus();
+    listenToUser(user.uid);
+    listenToHistory(user.uid);
+  } else {
+    currentUser = null;
+    document.getElementById('guestBanner').style.display = 'flex';
+    renderAuthArea(null);
+    guestData = loadGuestData();
+    applyGuestDailyBonus();
+    refreshGuestUI();
+  }
+});
+
+function renderAuthArea(user) {
+  const el = document.getElementById('authArea');
+  if (!user) {
+    el.innerHTML = `<span class="auth-badge guest">게스트</span>`;
+    return;
+  }
+  el.innerHTML = `
+    <span class="auth-badge logged-in">● 로그인됨</span>
+    <button class="ghost" id="logoutBtn">로그아웃</button>
+  `;
+  document.getElementById('logoutBtn').onclick = () => auth.signOut();
+}
+
+// 최초 로그인 시(계정 문서가 없을 때만) ensureAccount() 콜러블 함수가 계정을 생성한다.
+// 이때 지금까지 게스트로 거래하던 localStorage 데이터(balance/holdings/avgCost/history)를
+// 그대로 넘겨서 로그인 후에도 이어서 거래할 수 있게 한다. 이미 계정이 있으면(재로그인)
+// 서버가 아무것도 하지 않으므로 기존 클라우드 데이터가 게스트 데이터로 덮어써지지 않는다.
+async function ensureAccount() {
+  try {
+    const res = await ensureAccountFn({
+      balance: guestData.balance,
+      holdings: guestData.holdings,
+      avgCost: guestData.avgCost,
+      history: guestData.history,
+      lastAttendanceDate: guestData.lastAttendanceDate,
+    });
+    if (res.data?.migrated) {
+      // 이관 완료 - 로컬 게스트 지갑은 초기화(이제 클라우드 계정이 이어받았음)
+      localStorage.removeItem(GUEST_STORAGE_KEY);
+      guestData = loadGuestData();
+      showMigrateNotice();
+    }
+  } catch (e) {
+    console.warn('ensureAccount 실패:', e.message);
+  }
+}
+
+// 로그인 상태에서 매일(KST) 1회 출석 보상 지급
+async function claimDailyBonus() {
+  try {
+    const res = await claimDailyBonusFn();
+    if (res.data?.claimed) showDailyBonusMsg(res.data.bonus);
+  } catch (e) {
+    console.warn('claimDailyBonus 실패:', e.message);
+  }
+}
+
+function showMigrateNotice() {
+  const el = document.getElementById('migrateNotice');
+  if (!el) return;
+  el.style.display = 'flex';
+  setTimeout(() => { el.style.display = 'none'; }, 6000);
+}
+
+// ====================== 실시간 구독 ======================
+function listenToUser(uid) {
+  db.collection('users').doc(uid).onSnapshot((doc) => {
+    if (!doc.exists) return;
+    const data = doc.data();
+    window.__myUser = data;
+    document.getElementById('balanceVal').textContent = fmt(data.balance) + '원';
+    updatePortfolioValue();
+    renderAssets();
+    if (selectedCoinId) { refreshModalPrice(); refreshDetail(); }
+  });
+}
+
+function listenToCoins() {
+  db.collection('coins').onSnapshot((snap) => {
+    snap.forEach(doc => coinsCache[doc.id] = doc.data());
+    renderCoinList();
+    updatePortfolioValue();
+    renderAssets();
+    if (selectedCoinId) refreshDetail();
+  });
+}
+
+function listenToHistory(uid) {
+  db.collection('transactions')
+    .where('uid', '==', uid)
+    .orderBy('timestamp', 'desc')
+    .limit(30)
+    .onSnapshot((snap) => {
+      const rows = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        rows.push(`<tr>
+          <td>${formatKST(d.timestamp)}</td>
+          <td>${STREAMER_META[d.streamerId]?.name || coinsCache[d.streamerId]?.name || d.streamerId}</td>
+          <td>${d.type === 'buy' ? '매수' : '매도'}</td>
+          <td>${d.qty}</td>
+          <td>${fmt(d.price)}원</td>
+        </tr>`);
+      });
+      document.getElementById('historyBody').innerHTML = rows.join('');
+    });
+}
+
+// ====================== 공통 유틸 ======================
+function fmt(n) { return Math.round(n || 0).toLocaleString('ko-KR'); }
+
+function sortedCoinIds() {
+  return Object.keys(coinsCache).sort((a, b) => {
+    const ia = STREAMER_ORDER.indexOf(a), ib = STREAMER_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+}
+
+// priceHistory의 마지막 두 값으로 직전 대비 변동을 계산
+function priceChange(coin) {
+  const hist = Array.isArray(coin.priceHistory) ? coin.priceHistory : [];
+  const cur = coin.currentPrice || 0;
+  if (hist.length < 2) return { change: 0, pct: 0 };
+  const prev = hist[hist.length - 2].v;
+  const change = cur - prev;
+  const pct = prev ? (change / prev) * 100 : 0;
+  return { change, pct };
+}
+
+function updatePortfolioValue() {
+  if (!window.__myUser) return;
+  const holdings = window.__myUser.holdings || {};
+  let total = 0;
+  for (const [id, qty] of Object.entries(holdings)) {
+    const price = coinsCache[id]?.currentPrice || 0;
+    total += price * qty;
+  }
+  document.getElementById('portfolioVal').textContent = fmt(total) + '원';
+  document.getElementById('totalVal').textContent = fmt(total + (window.__myUser.balance || 0)) + '원';
+}
+
+// ====================== 거래소 탭: 코인 리스트 ======================
+function renderCoinList() {
+  const grid = document.getElementById('coinList');
+  grid.innerHTML = sortedCoinIds().map(id => {
+    const c = coinsCache[id];
+    const meta = STREAMER_META[id] || {};
+    const color = meta.color || '#888';
+    const isLive = c.status === 'live';
+    const { change, pct } = priceChange(c);
+    const dir = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+    const arrow = change > 0 ? '▲' : change < 0 ? '▼' : '-';
+    return `
+      <div class="coin-row" style="--member-color:${color}" onclick="openDetail('${id}')">
+        ${meta.file ? `<img class="coin-row-icon" src="images/${meta.file}" alt="${meta.name || c.name}" onerror="this.style.display='none'">` : ''}
+        <div class="coin-row-name">
+          ${meta.name || c.name}
+          <span class="coin-row-status ${isLive ? 'live' : ''}">${isLive ? '방송중' : '방송종료'}</span>
+        </div>
+        <div class="coin-row-price">${fmt(c.currentPrice || 0)}원</div>
+        <div class="coin-row-change ${dir}">${arrow} ${fmt(Math.abs(change))} (${Math.abs(pct).toFixed(1)}%)</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ====================== 자산 탭 ======================
+function renderAssets() {
+  const el = document.getElementById('assetsList');
+  if (!el) return;
+  const user = window.__myUser || {};
+  const holdings = user.holdings || {};
+  const avgCost = user.avgCost || {};
+  const ids = Object.keys(holdings).filter(id => holdings[id] > 0);
+
+  if (ids.length === 0) {
+    el.innerHTML = '<div class="empty-state">보유 중인 코인이 없습니다. 거래소 탭에서 코인을 매수해보세요.</div>';
+    return;
+  }
+
+  el.innerHTML = ids.map(id => {
+    const meta = STREAMER_META[id] || {};
+    const qty = holdings[id];
+    const buy = avgCost[id] || 0;
+    const cur = coinsCache[id]?.currentPrice || 0;
+    const diff = cur - buy;
+    const diffPct = buy ? (diff / buy) * 100 : 0;
+    const dir = diff > 0 ? 'up' : diff < 0 ? 'down' : '';
+    const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '-';
+    return `
+      <div class="asset-row" style="--member-color:${meta.color || '#888'}">
+        ${meta.file ? `<img class="coin-row-icon" src="images/${meta.file}" alt="${meta.name}" onerror="this.style.display='none'">` : ''}
+        <div class="asset-row-main">
+          <div class="asset-row-name">${meta.name || id}</div>
+          <div class="asset-row-qty">${qty}주</div>
+        </div>
+        <div class="asset-row-prices">
+          <div>매수가 ${fmt(buy)}원 · 현재가 ${fmt(cur)}원</div>
+          <div class="diff ${dir}">${arrow} ${fmt(Math.abs(diff))}원 (${Math.abs(diffPct).toFixed(1)}%)</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ====================== 코인 상세 화면 ======================
+function openDetail(id) {
+  selectedCoinId = id;
+  document.getElementById('detailMsg').textContent = '';
+  document.getElementById('detailQty').value = '';
+  refreshDetail();
+  document.getElementById('detailBg').classList.add('open');
+  clearInterval(detailCountdownTimer);
+  detailCountdownTimer = setInterval(renderDetailCountdown, 1000);
+}
+function closeDetail() {
+  document.getElementById('detailBg').classList.remove('open');
+  clearInterval(detailCountdownTimer);
+}
+document.getElementById('detailBtnClose').onclick = closeDetail;
+
+function refreshDetail() {
+  const c = coinsCache[selectedCoinId];
+  if (!c) return;
+  const meta = STREAMER_META[selectedCoinId] || {};
+
+  document.getElementById('detailIcon').src = meta.file ? `images/${meta.file}` : '';
+  document.getElementById('detailIcon').style.setProperty('--member-color', meta.color || '#888');
+  document.getElementById('detailCard').style.setProperty('--member-color', meta.color || '#888');
+  document.getElementById('detailName').textContent = meta.name || c.name;
+  document.getElementById('detailPrice').textContent = fmt(c.currentPrice) + '원';
+
+  const { change, pct } = priceChange(c);
+  const dir = change > 0 ? 'up' : change < 0 ? 'down' : 'flat';
+  const arrow = change > 0 ? '▲' : change < 0 ? '▼' : '-';
+  const changeEl = document.getElementById('detailChange');
+  changeEl.textContent = `${arrow} ${fmt(Math.abs(change))} (${Math.abs(pct).toFixed(1)}%)`;
+  changeEl.style.color = dir === 'up' ? 'var(--up)' : dir === 'down' ? 'var(--down)' : 'var(--muted)';
+
+  renderDetailChart(c.priceHistory);
+  renderDetailCountdown();
+
+  const holding = (window.__myUser?.holdings || {})[selectedCoinId] || 0;
+  document.getElementById('detailHolding').textContent = holding + '주';
+
+  const notTradable = c.tradable !== true;
+  document.getElementById('detailNotTradable').style.display = notTradable ? 'block' : 'none';
+  document.getElementById('detailBtnBuy').disabled = notTradable;
+  document.getElementById('detailBtnSell').disabled = notTradable;
+
+  updateDetailTotal();
+}
+
+function renderDetailCountdown() {
+  const c = coinsCache[selectedCoinId];
+  const el = document.getElementById('detailCountdown');
+  if (!c || c.status !== 'live' || !c.broadcastStartedAt) { el.style.display = 'none'; return; }
+  const remain = c.broadcastStartedAt + 5 * 60000 - Date.now();
+  if (remain <= 0) { el.style.display = 'none'; return; }
+  const m = Math.floor(remain / 60000);
+  const s = Math.floor((remain % 60000) / 1000);
+  el.style.display = 'inline-block';
+  el.textContent = `가격 갱신 시작까지 ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// 분당 채팅수(가격) 흐름을 막대그래프로 표시. 직전 값보다 오르면 양봉(빨강), 내리면 음봉(파랑).
+function renderDetailChart(history) {
+  const svg = document.getElementById('detailChart');
+  if (!Array.isArray(history) || history.length < 2) { svg.innerHTML = ''; return; }
+  const values = history.map(p => p.v).slice(-60); // 최근 60개(1시간)까지만 표시
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const n = values.length;
+  const barW = 100 / n;
+  const bars = values.map((v, i) => {
+    const prevV = i > 0 ? values[i - 1] : v;
+    const up = v >= prevV;
+    const h = ((v - min) / range) * 32 + 2;
+    const x = i * barW;
+    const y = 38 - h;
+    return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(barW * 0.65).toFixed(2)}" height="${h.toFixed(2)}" fill="${up ? 'var(--up)' : 'var(--down)'}" />`;
+  }).join('');
+  svg.innerHTML = bars;
+}
+
+document.getElementById('detailQty').addEventListener('input', updateDetailTotal);
+function updateDetailTotal() {
+  const qty = parseInt(document.getElementById('detailQty').value) || 0;
+  const price = coinsCache[selectedCoinId]?.currentPrice || 0;
+  const gross = qty * price;
+  const fee = Math.round(gross * SELL_FEE_RATE);
+  document.getElementById('detailBuyTotal').textContent = fmt(gross) + '원';
+  document.getElementById('detailSellTotal').textContent = fmt(gross - fee) + '원';
+}
+document.getElementById('detailBtnBuy').onclick = () => tradeFromDetail('buy');
+document.getElementById('detailBtnSell').onclick = () => tradeFromDetail('sell');
+
+async function tradeFromDetail(type) {
+  const qty = parseInt(document.getElementById('detailQty').value);
+  const msgEl = document.getElementById('detailMsg');
+  if (!qty || qty <= 0) { msgEl.style.color = 'salmon'; msgEl.textContent = '수량을 정확히 입력하세요.'; return; }
+  await executeTrade(type, selectedCoinId, qty, msgEl);
+  document.getElementById('detailQty').value = '';
+  updateDetailTotal();
+}
+
+// ====================== 매수/매도 실행 ======================
+// 로그인 상태: 매수/매도는 Cloud Function(callable) trade()가 서버에서 처리한다.
+// 클라이언트가 balance/holdings를 직접 계산해 Firestore에 write하던 예전 방식은
+// 개발자도구로 얼마든지 조작 가능했기 때문에 제거했다 (firestore.rules도 users/transactions
+// 클라이언트 write를 전면 차단하도록 함께 변경됨).
+//
+// 게스트(비로그인) 상태: 서버에 저장되는 공유 자산이 아니라 이 브라우저에만 있는
+// localStorage 데이터라서 클라이언트 계산이어도 조작 리스크가 없다 (조작해도 본인
+// 로컬 데이터만 바뀔 뿐, 서버/다른 사용자와는 무관함).
+async function executeTrade(type, coinId, qty, msgEl) {
+  if (!currentUser) {
+    tradeLocal(type, coinId, qty, msgEl);
+    return;
+  }
+  try {
+    await tradeFn({ coinId, type, qty });
+    msgEl.style.color = 'lightgreen';
+    msgEl.textContent = type === 'buy' ? '매수 완료!' : '매도 완료! (수수료 1% 차감됨)';
+  } catch (e) {
+    msgEl.style.color = 'salmon';
+    msgEl.textContent = e.message || '거래에 실패했습니다.';
+  }
+}
+
+function tradeLocal(type, coinId, qty, msgEl) {
+  const coin = coinsCache[coinId];
+  if (!coin || coin.tradable !== true) {
+    msgEl.style.color = 'salmon';
+    msgEl.textContent = '지금은 거래할 수 없는 코인입니다 (방송 종료 중).';
+    return;
+  }
+  const price = coin.currentPrice || 0;
+  const gross = price * qty;
+  const holdings = { ...guestData.holdings };
+  const avgCost = { ...guestData.avgCost };
+  const currentQty = holdings[coinId] || 0;
+
+  let fee = 0, netAmount = gross;
+
+  if (type === 'buy') {
+    if (guestData.balance < gross) { msgEl.style.color = 'salmon'; msgEl.textContent = '잔액이 부족합니다.'; return; }
+    const prevAvg = avgCost[coinId] || 0;
+    const newQty = currentQty + qty;
+    avgCost[coinId] = newQty > 0 ? Math.round((prevAvg * currentQty + gross) / newQty) : 0;
+    holdings[coinId] = newQty;
+    guestData.balance -= gross;
+  } else {
+    if (currentQty < qty) { msgEl.style.color = 'salmon'; msgEl.textContent = '보유 수량이 부족합니다.'; return; }
+    fee = Math.round(gross * SELL_FEE_RATE);
+    netAmount = gross - fee;
+    holdings[coinId] = currentQty - qty;
+    if (holdings[coinId] === 0) delete avgCost[coinId];
+    guestData.balance += netAmount;
+  }
+  guestData.holdings = holdings;
+  guestData.avgCost = avgCost;
+  guestData.history.push({ streamerId: coinId, type, qty, price, timestamp: Date.now() });
+  guestData.history = guestData.history.slice(-200); // 무한정 쌓이지 않도록 상한
+  saveGuestData(guestData);
+  refreshGuestUI();
+
+  msgEl.style.color = 'lightgreen';
+  msgEl.textContent = type === 'buy'
+    ? '매수 완료! (로컬 저장)'
+    : `매도 완료! 수수료 ${fmt(fee)}원 차감, 실수령 ${fmt(netAmount)}원 (로컬 저장)`;
+}
+</script>
+</body>
+</html>

@@ -16,6 +16,21 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "functions/**",
+      "chatservice/**",
+      "scripts/**",
+      "*.bat",
+      "*.md",
+      "*.json",
+      "*firebase-adminsdk*.json"
+    ]
+  },
   "emulators": {
     "functions": {
       "port": 5001

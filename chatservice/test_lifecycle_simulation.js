@@ -1,11 +1,16 @@
 /**
- * 더미 데이터로 하루 전체 라이프사이클을 검증하는 시뮬레이션 (채팅 기반 가격).
- * 네트워크/Firestore 없이 index.js의 computeUpdate() 순수 로직만 반복 호출한다.
- * (functions/의 예전 시청자수 버전과 동일한 시나리오 - 입력값만 "분당 채팅수"로 바뀜)
+ * 더미 데이터로 새 가격 시스템의 라이프사이클을 검증하는 시뮬레이션.
+ * 네트워크/Firestore 없이 index.js의 computeLiveTick/computeCloseTick 순수 로직만 호출한다.
+ *
+ * 시나리오:
+ *   1. 방송 시작 -> 첫 5분은 이전 종가로 고정 (거래는 가능)
+ *   2. 5분 이후 -> 최근 5분 평균 분당 채팅수로 현재가 계산, 변동 제한 없음
+ *   3. 방송 종료 -> 첫 5분/마지막 5분을 제외한 구간의 평균으로 종가 계산 + 즉시 거래 정지
+ *   4. 다음 방송 시작 -> 방금 계산된 종가로 다시 고정되며 재시작
  *
  * 실행: node test_lifecycle_simulation.js
  */
-const { computeUpdate } = require("./index.js");
+const { computeLiveTick, computeCloseTick, averageOf, priceFromAvg } = require("./index.js");
 
 let fails = 0;
 function assertEqual(actual, expected, label) {
@@ -17,90 +22,106 @@ function assertEqual(actual, expected, label) {
   }
 }
 
-function applyUpdate(coin, update) {
-  return { ...coin, ...update };
-}
-
+const MIN = 60000;
 let coin = {
-  name: "테스트멤버",
-  bjId: "dummy_bj",
   status: "closed",
-  currentPrice: 0,
-  frozenPrice: 0,
-  todaySum: 0,
-  todayCount: 0,
-  todayDate: "",
+  tradable: false,
+  currentPrice: 1000,
+  frozenPrice: 1000,
+  broadcastStartedAt: null,
+  chatSamples: [],
+  priceHistory: [],
 };
 
-const DAY1 = "2026-07-06";
-const DAY2 = "2026-07-07";
-let t = 0;
-function tick(isLive, chatCount, today) {
-  t += 1;
-  const update = computeUpdate(coin, isLive, chatCount, today, t);
-  coin = applyUpdate(coin, update);
+console.log("--- 1. 방송 시작 (t=0) ---");
+const broadcastStart = 0;
+coin = {
+  ...coin,
+  status: "live",
+  tradable: true,
+  broadcastStartedAt: broadcastStart,
+  currentPrice: coin.frozenPrice,
+};
+assertEqual(coin.tradable, true, "방송 시작 직후 거래 가능");
+assertEqual(coin.currentPrice, 1000, "방송 시작 직후 가격 = 이전 종가");
+
+console.log("\n--- 2. 첫 5분: 이전 종가로 고정 (분당 채팅수와 무관) ---");
+const chatByMinute = [10, 12, 8, 15, 20, 25, 18, 22, 19, 21, 30, 5, 8, 12, 9]; // 15분 방송
+for (let i = 1; i <= 4; i++) {
+  const now = broadcastStart + i * MIN;
+  const update = computeLiveTick(coin, chatByMinute[i - 1], now);
+  coin = { ...coin, ...update };
+  assertEqual(coin.currentPrice, 1000, `${i}분째 가격(고정 구간)`);
+  assertEqual(coin.tradable, true, `${i}분째 거래 가능 여부`);
 }
 
-console.log("--- 1. 방송 시작, 분당 채팅수 변동 ---");
-tick(true, 12, DAY1);
-assertEqual(coin.status, "live", "1차 방송 status");
-assertEqual(coin.currentPrice, 12, "1차 방송 1틱 가격(분당 채팅수)");
-assertEqual(coin.todaySum, 12, "todaySum after tick1");
-assertEqual(coin.todayCount, 1, "todayCount after tick1");
+console.log("\n--- 3. 5분째부터: 최근 5분 평균으로 계산 ---");
+for (let i = 5; i <= 15; i++) {
+  const now = broadcastStart + i * MIN;
+  const update = computeLiveTick(coin, chatByMinute[i - 1], now);
+  coin = { ...coin, ...update };
+  const window = chatByMinute.slice(Math.max(0, i - 5), i); // 최근 5개 샘플
+  const expected = priceFromAvg(averageOf(window.map((v) => ({ v }))));
+  assertEqual(coin.currentPrice, expected, `${i}분째 가격(이동평균 구간)`);
+}
+assertEqual(coin.chatSamples.length, 15, "15분 방송 후 chatSamples 개수");
 
-tick(true, 30, DAY1);
-tick(true, 18, DAY1);
-assertEqual(coin.currentPrice, 18, "1차 방송 마지막 가격 = 최신 분당 채팅수");
-assertEqual(coin.todaySum, 12 + 30 + 18, "todaySum after 3 ticks");
-assertEqual(coin.todayCount, 3, "todayCount after 3 ticks");
+console.log("\n--- 4. 방송 종료 (t=15분): 첫5분/끝5분 제외한 평균으로 종가 ---");
+const endTime = broadcastStart + 15 * MIN;
+const closeUpdate = computeCloseTick(coin, endTime);
+coin = { ...coin, ...closeUpdate };
 
-console.log("\n--- 2. 방송 종료 -> 그날 평균 고정 ---");
-tick(false, 0, DAY1);
-const avg1 = Math.round((12 + 30 + 18) / 3);
+// 첫5분/끝5분 제외 -> 5~10분째 샘플(인덱스 4~9, 값 20,25,18,22,19,21)만 남아야 함
+const middleValues = [20, 25, 18, 22, 19, 21];
+const expectedClose = priceFromAvg(averageOf(middleValues.map((v) => ({ v }))));
 assertEqual(coin.status, "closed", "방송 종료 status");
-assertEqual(coin.frozenPrice, avg1, "1차 방송 종료 후 평균 고정가");
-assertEqual(coin.currentPrice, avg1, "고정가가 currentPrice에도 반영");
+assertEqual(coin.tradable, false, "방송 종료 즉시 거래 정지");
+assertEqual(coin.currentPrice, expectedClose, "종가 = 첫/끝 5분 제외 평균");
+assertEqual(coin.frozenPrice, expectedClose, "frozenPrice에도 종가 반영");
+assertEqual(coin.chatSamples.length, 0, "방송 종료 후 chatSamples 리셋");
 
-console.log("\n--- 3. 오프라인 유지 중 가격 불변 확인 ---");
-tick(false, 0, DAY1);
-assertEqual(coin.currentPrice, avg1, "오프라인 유지 중에도 고정가 그대로 유지");
+console.log("\n--- 5. 오프라인 유지 중: 종가 그대로 유지 (거래 불가) ---");
+assertEqual(coin.currentPrice, expectedClose, "오프라인 중 가격 불변");
+assertEqual(coin.tradable, false, "오프라인 중 거래 불가 유지");
 
-console.log("\n--- 4. 같은 날 재방송 시작 -> 실시간 가격으로 전환, 평균은 누적 계속 ---");
-tick(true, 40, DAY1);
-assertEqual(coin.status, "live", "재방송 status");
-assertEqual(coin.currentPrice, 40, "재방송 실시간 가격");
-assertEqual(coin.todayCount, 4, "재방송 시작 후 todayCount는 리셋되지 않고 이어짐");
-assertEqual(coin.todaySum, 12 + 30 + 18 + 40, "재방송 시작 후 todaySum도 이어서 누적");
+console.log("\n--- 6. 다음 방송 시작: 방금 종가로 다시 고정 ---");
+const secondBroadcastStart = endTime + 3 * MIN; // 3분 쉬었다가 재방송
+coin = {
+  ...coin,
+  status: "live",
+  tradable: true,
+  broadcastStartedAt: secondBroadcastStart,
+  currentPrice: coin.frozenPrice,
+};
+assertEqual(coin.currentPrice, expectedClose, "재방송 시작 시 직전 종가로 고정");
 
-tick(true, 60, DAY1);
-assertEqual(coin.todaySum, 12 + 30 + 18 + 40 + 60, "재방송 2틱째 누적");
-assertEqual(coin.todayCount, 5, "재방송 2틱째 카운트");
+const tick1 = computeLiveTick(coin, 999, secondBroadcastStart + 1 * MIN);
+assertEqual(tick1.currentPrice, expectedClose, "재방송 1분째도 여전히 고정 구간 (채팅수 무시)");
 
-console.log("\n--- 5. 재방송 종료 -> 하루 전체(두 세션 합산) 평균으로 고정 ---");
-tick(false, 0, DAY1);
-const totalSum = 12 + 30 + 18 + 40 + 60;
-const avgFinal = Math.round(totalSum / 5);
-assertEqual(coin.status, "closed", "재방송 종료 status");
-assertEqual(coin.frozenPrice, avgFinal, "하루 전체 통합 평균으로 고정 (여러 방송 세션 합산 검증)");
-
-console.log("\n--- 6. 날짜가 바뀜 (다음날), 아직 방송 시작 전 ---");
-tick(false, 0, DAY2);
-assertEqual(coin.todaySum, 0, "날짜 변경 시 todaySum 리셋");
-assertEqual(coin.todayCount, 0, "날짜 변경 시 todayCount 리셋");
-assertEqual(coin.frozenPrice, avgFinal, "전날 고정가는 다음 방송 전까지 화면에 유지되어야 함");
-
-console.log("\n--- 7. 다음날 새 방송 시작 -> 실시간 가격으로 다시 전환 ---");
-tick(true, 25, DAY2);
-assertEqual(coin.status, "live", "다음날 방송 시작 status");
-assertEqual(coin.currentPrice, 25, "다음날 새 실시간 가격 (전날 평균과 무관하게 초기화)");
-assertEqual(coin.todaySum, 25, "다음날 todaySum은 0에서 새로 시작");
-assertEqual(coin.todayCount, 1, "다음날 todayCount는 1부터 시작");
+console.log("\n--- 7. 매우 짧은 방송(10분 미만) 종료 시 폴백: 전체 평균 사용 ---");
+let shortCoin = {
+  status: "live",
+  tradable: true,
+  broadcastStartedAt: 0,
+  frozenPrice: 1000,
+  currentPrice: 1000,
+  chatSamples: [],
+  priceHistory: [],
+};
+const shortChat = [10, 20, 30]; // 3분만 방송
+for (let i = 1; i <= 3; i++) {
+  const update = computeLiveTick(shortCoin, shortChat[i - 1], i * MIN);
+  shortCoin = { ...shortCoin, ...update };
+}
+const shortClose = computeCloseTick(shortCoin, 3 * MIN);
+const expectedShortClose = priceFromAvg(averageOf(shortChat.map((v) => ({ v })))); // 중간 구간 없어 전체 평균 폴백
+assertEqual(shortClose.currentPrice, expectedShortClose, "10분 미만 방송은 전체 평균으로 폴백");
 
 console.log("\n=================================");
 if (fails > 0) {
   console.error(`${fails}개 항목 실패`);
   process.exit(1);
 } else {
-  console.log("PASS: 전체 라이프사이클 시나리오 통과 (채팅 기반 가격, 방송 시작/변동/종료/평균고정/재방송/날짜전환)");
+  console.log("PASS: 새 가격 시스템 라이프사이클 전체 검증 통과");
   process.exit(0);
 }

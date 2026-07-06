@@ -1,6 +1,11 @@
 {
   "name": "chuntacoin-scripts",
   "private": true,
+  "scripts": {
+    "chat:on": "node toggle_chatservice.js on",
+    "chat:off": "node toggle_chatservice.js off",
+    "chat:status": "node toggle_chatservice.js status"
+  },
   "dependencies": {
     "firebase-admin": "^12.6.0"
   }

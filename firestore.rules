@@ -21,13 +21,17 @@ service cloud.firestore {
       // 이 규칙 자체를 우회한다 (여기 통과 못해도 상관 없음).
       allow create: if request.auth != null && request.auth.uid == uid
                     && !('balance' in request.resource.data)
-                    && !('holdings' in request.resource.data);
+                    && !('holdings' in request.resource.data)
+                    && !('avgCost' in request.resource.data)
+                    && !('lastAttendanceDate' in request.resource.data);
 
-      // 클라이언트(팡팡)는 자기 문서를 계속 수정할 수 있지만, balance/holdings는
-      // 절대 건드릴 수 없다 (trade()/ensureAccount() 같은 Admin SDK 콜러블만 가능).
+      // 클라이언트(팡팡)는 자기 문서를 계속 수정할 수 있지만, balance/holdings/avgCost/
+      // lastAttendanceDate는 절대 건드릴 수 없다 (trade()/ensureAccount()/
+      // claimDailyBonus() 같은 Admin SDK 콜러블만 가능). lastAttendanceDate를 막지
+      // 않으면 클라이언트가 직접 날짜를 되돌려서 출석 보상을 무한정 받을 수 있다.
       allow update: if request.auth != null && request.auth.uid == uid
                     && !request.resource.data.diff(resource.data).affectedKeys()
-                        .hasAny(['balance', 'holdings']);
+                        .hasAny(['balance', 'holdings', 'avgCost', 'lastAttendanceDate']);
     }
 
     match /transactions/{txId} {

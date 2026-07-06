@@ -1,0 +1,92 @@
+name: Deploy 천타코인
+
+# main 브랜치에 push될 때마다, 바뀐 폴더에 해당하는 부분만 자동으로 재배포한다.
+# (functions/만 바뀌면 Cloud Functions만, chatservice/만 바뀌면 Cloud Run만 다시 배포됨)
+on:
+  push:
+    branches: [main]
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      functions: ${{ steps.filter.outputs.functions }}
+      rules: ${{ steps.filter.outputs.rules }}
+      chatservice: ${{ steps.filter.outputs.chatservice }}
+      hosting: ${{ steps.filter.outputs.hosting }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            functions:
+              - 'functions/**'
+            rules:
+              - 'firestore.rules'
+            chatservice:
+              - 'chatservice/**'
+            hosting:
+              - 'index.html'
+              - 'images/**'
+              - 'firebase.json'
+
+  deploy-functions:
+    needs: changes
+    if: needs.changes.outputs.functions == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm install
+        working-directory: functions
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      - run: npm install -g firebase-tools
+      - run: firebase deploy --only functions --project chunta-d80c5 --non-interactive
+
+  deploy-rules:
+    needs: changes
+    if: needs.changes.outputs.rules == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      - run: npm install -g firebase-tools
+      - run: firebase deploy --only firestore:rules --project chunta-d80c5 --non-interactive
+
+  deploy-hosting:
+    needs: changes
+    if: needs.changes.outputs.hosting == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      - run: npm install -g firebase-tools
+      - run: firebase deploy --only hosting --project chunta-d80c5 --non-interactive
+
+  deploy-chatservice:
+    needs: changes
+    if: needs.changes.outputs.chatservice == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
+      - uses: google-github-actions/setup-gcloud@v2
+      - run: |
+          gcloud run deploy chuntacoin-chatservice \
+            --source ./chatservice \
+            --region asia-northeast3 \
+            --no-allow-unauthenticated \
+            --min-instances 1 --max-instances 1 \
+            --service-account 806899242677-compute@developer.gserviceaccount.com \
+            --project chunta-d80c5 \
+            --quiet

@@ -4,12 +4,14 @@
  * 사용법:
  *   1) Firebase 콘솔 > 프로젝트 설정 > 서비스 계정 > "새 비공개 키 생성" 으로 JSON 키 발급
  *   2) cd scripts && npm init -y && npm install firebase-admin
- *   3) STREAMERS 배열을 실제 12명 이름/BJ ID로 채우기 (streamer_coin_app.html의
+ *   3) STREAMERS 배열을 실제 12명 이름/BJ ID로 채우기 (index.html의
  *      STREAMER_LIST와 반드시 동일한 streamerId를 써야 함)
  *   4) GOOGLE_APPLICATION_CREDENTIALS=./serviceAccountKey.json node seed_coins.js
  *
- * 이미 존재하는 문서는 status/currentPrice 등 "런타임 필드"는 덮어쓰지 않고,
- * name/bjId 같은 "정적 필드"만 갱신한다 (merge: true). 처음 실행이면 초기값으로 생성된다.
+ * 이미 존재하는 문서는 name/bjId 같은 정적 필드만 갱신하고, chatservice가 관리하는
+ * currentPrice/status/chatSamples 같은 런타임 필드는 이미 있으면 절대 덮어쓰지 않는다
+ * (운영 중인 실제 가격 데이터를 재실행으로 날리지 않기 위함). 새 스키마 필드가 아직
+ * 없는 예전 문서에 한해서만 기본값을 채워준다.
  */
 const admin = require("firebase-admin");
 
@@ -18,7 +20,9 @@ admin.initializeApp({
 });
 const db = admin.firestore();
 
-// streamerId: Firestore 문서 ID (streamer_coin_app.html의 STREAMER_LIST와 동일해야 함)
+const PRICE_BASE = 1000; // chatservice의 가격 공식 기본값과 동일해야 함
+
+// streamerId: Firestore 문서 ID (index.html의 STREAMER_LIST와 동일해야 함)
 // bjId: 실제 SOOP 계정 아이디 (play.sooplive.co.kr/{bjId} 의 그 부분)
 const STREAMERS = [
   { streamerId: "chunyang",  name: "천양",   bjId: "243000" },
@@ -45,27 +49,40 @@ async function main() {
     process.exit(1);
   }
 
-  const batch = db.batch();
   for (const s of STREAMERS) {
     const ref = db.collection("coins").doc(s.streamerId);
-    batch.set(
-      ref,
-      {
+    const doc = await ref.get();
+
+    if (!doc.exists) {
+      await ref.set({
         name: s.name,
         bjId: s.bjId,
         status: "closed",
-        currentPrice: 0,
-        frozenPrice: 0,
-        todaySum: 0,
-        todayCount: 0,
-        todayDate: "",
+        tradable: false,
+        currentPrice: PRICE_BASE,
+        frozenPrice: PRICE_BASE,
+        broadcastStartedAt: null,
+        chatSamples: [],
         priceHistory: [],
-      },
-      { merge: true }
-    );
+      });
+      console.log(`${s.streamerId}: 새로 생성`);
+      continue;
+    }
+
+    const data = doc.data();
+    const patch = { name: s.name, bjId: s.bjId };
+    if (data.tradable === undefined) patch.tradable = data.status === "live";
+    if (data.chatSamples === undefined) patch.chatSamples = [];
+    if (data.broadcastStartedAt === undefined) patch.broadcastStartedAt = null;
+    if (data.currentPrice === undefined) patch.currentPrice = PRICE_BASE;
+    if (data.frozenPrice === undefined) patch.frozenPrice = data.currentPrice ?? PRICE_BASE;
+    if (data.priceHistory === undefined) patch.priceHistory = [];
+
+    await ref.set(patch, { merge: true });
+    console.log(`${s.streamerId}: 갱신 (${Object.keys(patch).join(", ")})`);
   }
-  await batch.commit();
-  console.log(`coins 컬렉션에 ${STREAMERS.length}개 문서 생성/갱신 완료`);
+
+  console.log(`완료: ${STREAMERS.length}명 처리`);
   process.exit(0);
 }
 

@@ -1,24 +1,27 @@
 /**
  * 천타버스 코인 거래소 - SOOP 실시간 채팅 카운트 서비스 (Cloud Run, 상시 구동)
  *
- * 시청자수 대신 "분당 채팅수"를 코인 가격으로 사용한다.
- * 시청자수는 REST 폴링으로 충분했지만, 채팅수는 SOOP이 REST로 제공하지 않고
- * 방송별 실시간 채팅 웹소켓에 직접 붙어서 메시지를 세는 방법뿐이라(비공식 프로토콜),
- * Cloud Scheduler + 짧게 끝나는 Cloud Functions 구조로는 안 되고 상시 연결이 필요하다.
- * 그래서 이 부분만 Cloud Run으로 분리했다.
+ * 가격 산정 규칙 (2026-07-06 재설계):
+ *   - 방송 종료 중: 거래 정지, 마지막 종가만 표시
+ *   - 방송 시작 후 첫 5분: 이전 종가로 가격 고정, 거래는 가능
+ *   - 방송 시작 5분 이후: 최근 5분 평균 분당 채팅수로 현재가 계산, 매분 0초에 갱신
+ *     현재가 = 1000원 + 최근 5분 평균 분당 채팅수 × 100원
+ *   - 방송 종료 시: 즉시 거래 정지, 첫 5분/마지막 5분을 제외한 구간의 평균으로 종가 계산
+ *     종가 = 1000원 + (첫/끝 5분 제외) 방송 평균 분당 채팅수 × 100원
  *
- * 검증된 프로토콜 (2026-07-06, 실제 라이브 방송 gjgj3274 대상 테스트):
+ * 검증된 채팅 웹소켓 프로토콜 (2026-07-06, 실제 라이브 방송 gjgj3274 대상 테스트):
  *   1) GET/POST player_live_api.php 로 CHATNO/CHDOMAIN/CHPT 획득
  *   2) wss://{CHDOMAIN}:{CHPT+1}/Websocket/{bjId} 로 연결 (subprotocol: 'chat')
  *   3) CONNECT_PACKET 전송 -> 2초 대기 -> JOIN_PACKET(CHATNO 포함) 전송
  *   4) 들어오는 프레임은 0x0C(form feed)로 필드가 구분됨. 헤더의 opcode가 "0005"인
- *      프레임만 실제 채팅 메시지 (0127=입장, 0109=퇴장, 0002=join ack 등은 채팅 아님 -
- *      실제 라이브 방송에서 각 opcode별 프레임을 직접 캡처해서 확인함)
+ *      프레임만 실제 채팅 메시지 (0127=입장, 0109=퇴장, 0002=join ack 등은 채팅 아님)
  *   5) 5분 이상 핑이 없으면 서버가 연결을 끊으므로 60초마다 PING_PACKET 전송
  *
- * 방송 종료(offline) 시에는 그날 누적된 분당 채팅수의 평균으로 가격을 고정한다
- * (같은 날 여러 번 방송해도 하루 전체 평균 1개로 통합 - functions/index.js의
- * computeUpdate와 동일한 로직을 그대로 포팅함).
+ * Firestore 사용량 최적화 (2026-07-06):
+ *   예전에는 30초마다 coins 컬렉션 전체를 다시 읽어왔는데(하루 약 3.4만 읽기,
+ *   트래픽과 무관하게 고정 발생), 12명의 bjId 목록은 거의 바뀌지 않으므로 시작할 때
+ *   딱 한 번만 읽고 메모리에 캐싱한다. 이후로는 실제로 가격이 바뀔 때(매분 0초)와
+ *   방송 시작/종료 시점에만 Firestore를 쓴다 (읽기는 인스턴스 재시작 시 1회뿐).
  */
 const axios = require("axios");
 const WebSocket = require("ws");
@@ -29,57 +32,93 @@ admin.initializeApp();
 const db = admin.firestore();
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
-const LIVE_CHECK_INTERVAL_MS = 30 * 1000; // 방송 시작/종료 여부 체크 주기
-const PRICE_TICK_INTERVAL_MS = 60 * 1000; // 코인 가격(분당 채팅수) 반영 주기
+const LIVE_CHECK_INTERVAL_MS = 30 * 1000; // 방송 시작/종료 여부 체크 주기 (Firestore 아님, SOOP API 호출)
 const CHAT_PING_INTERVAL_MS = 60 * 1000; // 채팅 소켓 keepalive (5분 무핑이면 끊김)
 
-// ====================== KST 날짜 ======================
+const PRICE_BASE = 1000; // 현재가/종가 공식의 기본값
+const PRICE_MULTIPLIER = 100; // 분당 채팅수 1당 가격 가중치
+const FREEZE_MINUTES = 5; // 방송 시작 후 가격 고정 구간(분) / 종가 계산 시 제외하는 앞뒤 구간(분)
+const ROLLING_WINDOW_MINUTES = 5; // 현재가 계산에 쓰는 이동평균 구간(분)
+const MAX_CHAT_SAMPLES = 600; // chatSamples 무한정 증가 방지 (10시간 방송까지 커버)
+const MAX_PRICE_HISTORY = 180; // 차트용 priceHistory 상한 (3시간)
+
+// ====================== KST 시간 ======================
+function nowKST() {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000);
+}
 function todayKST() {
-  const now = new Date();
-  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  return kst.toISOString().slice(0, 10);
+  return nowKST().toISOString().slice(0, 10);
 }
 
-// ====================== 코인 가격 계산 (순수 함수, functions/index.js와 동일 로직) ======================
-function computeUpdate(coin, isLive, chatCount, today, now = Date.now()) {
-  const wasLive = coin.status === "live";
-
-  let todaySum = coin.todaySum || 0;
-  let todayCount = coin.todayCount || 0;
-  if (coin.todayDate !== today) {
-    todaySum = 0;
-    todayCount = 0;
-  }
-
-  const update = { todayDate: today };
-  const history = Array.isArray(coin.priceHistory) ? coin.priceHistory.slice(-59) : [];
-
-  if (isLive) {
-    todaySum += chatCount;
-    todayCount += 1;
-    update.status = "live";
-    update.currentPrice = chatCount;
-    update.todaySum = todaySum;
-    update.todayCount = todayCount;
-    history.push({ t: now, v: chatCount });
-    update.priceHistory = history;
-  } else {
-    update.status = "closed";
-    if (wasLive && todayCount > 0) {
-      const avg = Math.round(todaySum / todayCount);
-      update.frozenPrice = avg;
-      update.currentPrice = avg;
-      history.push({ t: now, v: avg });
-      update.priceHistory = history;
-    }
-    update.todaySum = todaySum;
-    update.todayCount = todayCount;
-  }
-
-  return update;
+// ====================== 가격 계산 순수 함수 ======================
+function averageOf(samples) {
+  if (!samples || samples.length === 0) return 0;
+  return samples.reduce((s, x) => s + x.v, 0) / samples.length;
+}
+function priceFromAvg(avgChatPerMin) {
+  return Math.round(PRICE_BASE + avgChatPerMin * PRICE_MULTIPLIER);
 }
 
-// ====================== 방송 중 여부 ======================
+// 방송 시작 직후(첫 5분) -> 이전 종가로 고정 / 5분 이후 -> 최근 5분 평균으로 계산
+// coin: { frozenPrice, broadcastStartedAt, chatSamples, priceHistory }
+// chatCountThisMinute: 이번 1분간 실제로 카운트된 채팅 수
+function computeLiveTick(coin, chatCountThisMinute, now) {
+  const chatSamples = (Array.isArray(coin.chatSamples) ? coin.chatSamples : [])
+    .concat([{ t: now, v: chatCountThisMinute }])
+    .slice(-MAX_CHAT_SAMPLES);
+
+  const broadcastStartedAt = coin.broadcastStartedAt ?? now;
+  const elapsedMin = (now - broadcastStartedAt) / 60000;
+
+  const currentPrice =
+    elapsedMin < FREEZE_MINUTES
+      ? coin.frozenPrice || PRICE_BASE
+      : priceFromAvg(averageOf(chatSamples.slice(-ROLLING_WINDOW_MINUTES)));
+
+  const priceHistory = (Array.isArray(coin.priceHistory) ? coin.priceHistory : [])
+    .concat([{ t: now, v: currentPrice }])
+    .slice(-MAX_PRICE_HISTORY);
+
+  return {
+    status: "live",
+    tradable: true,
+    broadcastStartedAt,
+    currentPrice,
+    chatSamples,
+    priceHistory,
+  };
+}
+
+// 방송 종료 시점 -> 첫 5분/마지막 5분을 제외한 구간의 평균으로 종가 계산
+function computeCloseTick(coin, now) {
+  const chatSamples = Array.isArray(coin.chatSamples) ? coin.chatSamples : [];
+  const broadcastStartedAt = coin.broadcastStartedAt ?? now;
+
+  const middle = chatSamples.filter((s) => {
+    const fromStart = (s.t - broadcastStartedAt) / 60000;
+    const fromEnd = (now - s.t) / 60000;
+    return fromStart >= FREEZE_MINUTES && fromEnd >= FREEZE_MINUTES;
+  });
+  // 방송이 10분(첫5분+끝5분)보다 짧으면 중간 구간이 비므로 전체 평균으로 대체
+  const basis = middle.length > 0 ? middle : chatSamples;
+  const closePrice = priceFromAvg(averageOf(basis));
+
+  const priceHistory = (Array.isArray(coin.priceHistory) ? coin.priceHistory : [])
+    .concat([{ t: now, v: closePrice }])
+    .slice(-MAX_PRICE_HISTORY);
+
+  return {
+    status: "closed",
+    tradable: false,
+    currentPrice: closePrice,
+    frozenPrice: closePrice,
+    broadcastStartedAt: null,
+    chatSamples: [], // 다음 방송을 위해 리셋
+    priceHistory,
+  };
+}
+
+// ====================== 방송 중 여부 (SOOP API, Firestore 아님) ======================
 async function checkIsLive(bjId) {
   try {
     const res = await axios.get(`https://bjapi.afreecatv.com/api/${encodeURIComponent(bjId)}/station`, {
@@ -129,7 +168,6 @@ function buildPacket(opcode, body) {
   );
   return Buffer.concat([ESC, header, body]);
 }
-
 function connectPacket() {
   return buildPacket(1, Buffer.concat([F, F, F, Buffer.from("16", "ascii"), F]));
 }
@@ -140,13 +178,25 @@ function pingPacket() {
   return buildPacket(0, F);
 }
 
-// coinId -> { ws, bjId, chatCount, pingTimer }
+// ====================== 상태 (전부 메모리 캐시, coinState가 Firestore 값의 사본 역할) ======================
+// coinId -> { bjId, status, tradable, currentPrice, frozenPrice, broadcastStartedAt, chatSamples, priceHistory }
+const coinState = new Map();
+// coinId -> { ws, chatCount, pingTimer }
 const connections = new Map();
+
+// 인스턴스 시작 시 1회만 coins 컬렉션을 읽어서 메모리에 채운다 (그 이후로는 주기적 재조회 없음)
+async function loadInitialState() {
+  const snap = await db.collection("coins").get();
+  snap.forEach((doc) => {
+    coinState.set(doc.id, { bjId: doc.data().bjId, ...doc.data() });
+  });
+  console.log(`초기 상태 로드 완료: ${coinState.size}개 코인 (Firestore 읽기 1회)`);
+}
 
 function openChatConnection(coinId, bjId, connectInfo) {
   const url = `wss://${connectInfo.chatDomain}:${connectInfo.chatPort}/Websocket/${bjId}`;
   const ws = new WebSocket(url, ["chat"]);
-  const conn = { ws, bjId, chatCount: 0, pingTimer: null };
+  const conn = { ws, chatCount: 0, pingTimer: null };
   connections.set(coinId, conn);
 
   ws.on("open", () => {
@@ -163,19 +213,14 @@ function openChatConnection(coinId, bjId, connectInfo) {
   ws.on("message", (data) => {
     const parts = Buffer.from(data).toString("utf8").split("\x0c");
     const opcode = parts[0].slice(2, 6);
-    if (opcode === "0005") {
-      conn.chatCount += 1;
-    }
+    if (opcode === "0005") conn.chatCount += 1;
   });
 
-  ws.on("error", (e) => {
-    console.error(`[${coinId}/${bjId}] 채팅 소켓 에러:`, e.message);
-  });
+  ws.on("error", (e) => console.error(`[${coinId}/${bjId}] 채팅 소켓 에러:`, e.message));
 
   ws.on("close", () => {
     console.log(`[${coinId}/${bjId}] 채팅 연결 종료`);
     if (conn.pingTimer) clearInterval(conn.pingTimer);
-    // isLive 재확인 루프가 다시 열지 결정하도록 맵에서만 제거
     if (connections.get(coinId) === conn) connections.delete(coinId);
   });
 }
@@ -192,58 +237,82 @@ function closeChatConnection(coinId) {
   connections.delete(coinId);
 }
 
-// ====================== 방송 시작/종료 감지 루프 ======================
+// ====================== 방송 시작/종료 감지 루프 (SOOP API만 호출, Firestore 읽기 없음) ======================
 async function liveCheckLoop() {
-  const coinsSnap = await db.collection("coins").get();
-  const today = todayKST();
+  const now = Date.now();
 
   await Promise.all(
-    coinsSnap.docs.map(async (doc) => {
-      const coinId = doc.id;
-      const coin = doc.data();
+    Array.from(coinState.entries()).map(async ([coinId, coin]) => {
       const isLive = await checkIsLive(coin.bjId);
       const hasConn = connections.has(coinId);
+      const wasLive = coin.status === "live";
 
       if (isLive && !hasConn) {
         const info = await getChatConnectInfo(coin.bjId);
-        if (info) {
-          openChatConnection(coinId, coin.bjId, info);
-        }
+        if (info) openChatConnection(coinId, coin.bjId, info);
       } else if (!isLive && hasConn) {
         closeChatConnection(coinId);
       }
 
-      if (!isLive && coin.status === "live") {
-        // 방금 방송이 끝난 시점: 그날 평균으로 가격 고정
-        const update = computeUpdate(coin, false, 0, today);
-        update.lastUpdated = admin.firestore.FieldValue.serverTimestamp();
-        await doc.ref.update(update);
+      if (isLive && !wasLive) {
+        // 방송 시작: 이전 종가로 가격 고정하고 5분 카운트다운 시작
+        const update = {
+          status: "live",
+          tradable: true,
+          broadcastStartedAt: now,
+          currentPrice: coin.frozenPrice || PRICE_BASE,
+          chatSamples: [],
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        coinState.set(coinId, { ...coin, ...update, broadcastStartedAt: now });
+        await db.collection("coins").doc(coinId).update(update);
+        console.log(`[${coinId}] 방송 시작 감지`);
+      } else if (!isLive && wasLive) {
+        // 방송 종료: 즉시 거래 정지 + 종가 계산
+        const update = computeCloseTick(coin, now);
+        coinState.set(coinId, { ...coin, ...update });
+        await db.collection("coins").doc(coinId).update({
+          ...update,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log(`[${coinId}] 방송 종료 감지, 종가=${update.currentPrice}`);
       }
     })
   );
 }
 
-// ====================== 1분마다 가격(분당 채팅수) 반영 루프 ======================
-async function priceTickLoop() {
-  const today = todayKST();
-  const entries = Array.from(connections.entries());
+// ====================== 매분 0초 정각에 가격 갱신 ======================
+async function priceTick() {
+  const now = Date.now();
 
   await Promise.all(
-    entries.map(async ([coinId, conn]) => {
+    Array.from(connections.entries()).map(async ([coinId, conn]) => {
       const chatCount = conn.chatCount;
-      conn.chatCount = 0; // 다음 1분을 위해 리셋
+      conn.chatCount = 0;
 
-      const doc = await db.collection("coins").doc(coinId).get();
-      if (!doc.exists) return;
-      const coin = doc.data();
+      const coin = coinState.get(coinId);
+      if (!coin || coin.status !== "live") return;
 
-      const update = computeUpdate(coin, true, chatCount, today);
-      update.lastUpdated = admin.firestore.FieldValue.serverTimestamp();
-      await doc.ref.update(update);
-
+      const update = computeLiveTick(coin, chatCount, now);
+      coinState.set(coinId, { ...coin, ...update });
+      await db.collection("coins").doc(coinId).update({
+        ...update,
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      });
       console.log(`[${coinId}] 분당 채팅수=${chatCount} -> currentPrice=${update.currentPrice}`);
     })
   );
+}
+
+// 매분 정각(0초)에 정확히 맞춰서 priceTick을 실행하고, 그 뒤로는 60초 간격 유지
+function scheduleMinuteTick() {
+  const msUntilNextMinute = 60000 - (Date.now() % 60000);
+  setTimeout(() => {
+    priceTick().catch((e) => console.error("priceTick 실패:", e.message));
+    setInterval(() => {
+      priceTick().catch((e) => console.error("priceTick 실패:", e.message));
+    }, 60000);
+  }, msUntilNextMinute);
 }
 
 function startLoops() {
@@ -252,9 +321,7 @@ function startLoops() {
     liveCheckLoop().catch((e) => console.error("liveCheckLoop 실패:", e.message));
   }, LIVE_CHECK_INTERVAL_MS);
 
-  setInterval(() => {
-    priceTickLoop().catch((e) => console.error("priceTickLoop 실패:", e.message));
-  }, PRICE_TICK_INTERVAL_MS);
+  scheduleMinuteTick();
 }
 
 // ====================== Cloud Run 헬스체크용 HTTP 서버 ======================
@@ -272,8 +339,9 @@ if (require.main === module) {
         })
       );
     })
-    .listen(port, () => {
+    .listen(port, async () => {
       console.log(`chatservice listening on ${port}`);
+      await loadInitialState();
       startLoops();
     });
 
@@ -287,8 +355,12 @@ if (require.main === module) {
 }
 
 module.exports = {
-  computeUpdate,
   todayKST,
+  nowKST,
+  averageOf,
+  priceFromAvg,
+  computeLiveTick,
+  computeCloseTick,
   checkIsLive,
   getChatConnectInfo,
   buildPacket,
@@ -298,7 +370,9 @@ module.exports = {
   openChatConnection,
   closeChatConnection,
   connections,
+  coinState,
+  loadInitialState,
   liveCheckLoop,
-  priceTickLoop,
+  priceTick,
   db,
 };

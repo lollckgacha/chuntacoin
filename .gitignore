@@ -6,5 +6,7 @@ ui-debug.log
 *.log
 .firebase/
 serviceAccountKey.json
+*firebase-adminsdk*.json
 .env
 .claude/
+_chatservice_source.tar.gz
