@@ -259,13 +259,13 @@
     color: var(--text); white-space: nowrap; z-index: 5; transform: translateY(-100%);
   }
   .toast {
-    position: fixed; left: 50%; bottom: 32px; transform: translate(-50%, 16px);
-    background: var(--card); color: var(--text); border: 1px solid var(--accent);
-    padding: 12px 22px; border-radius: 12px; font-weight: 700; font-size: 14px;
-    opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s;
-    z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(0.9);
+    background: var(--card); color: var(--text); border: 2px solid var(--accent);
+    padding: 20px 36px; border-radius: 16px; font-weight: 800; font-size: 18px;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s;
+    z-index: 200; box-shadow: 0 12px 36px rgba(0,0,0,0.55); text-align: center;
   }
-  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   .toast.error { border-color: var(--down); }
   .detail-close-btn { width: 100%; margin-top: 14px; }
   .not-tradable-note {
