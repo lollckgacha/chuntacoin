@@ -214,9 +214,21 @@
   }
   .actions { display: flex; gap: 8px; margin-top: 16px; }
   .actions button { flex: 1; }
-  .btn-buy { background: var(--up); color: #250406; }
-  .btn-sell { background: var(--down); color: #04122a; }
+  .btn-buy { background: var(--up); color: #250406; width: 100%; margin-top: 10px; }
+  .btn-sell { background: var(--down); color: #04122a; width: 100%; margin-top: 10px; }
   .fee-note { font-size: 11px; color: var(--muted); margin-top: -6px; margin-bottom: 8px; }
+
+  .trade-panel {
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px; margin-top: 12px;
+  }
+  .trade-panel-title { font-size: 14px; font-weight: 800; margin-bottom: 8px; }
+  .trade-panel-title.buy { color: var(--up); }
+  .trade-panel-title.sell { color: var(--down); }
+  .trade-panel input { margin: 8px 0; }
+  .quick-btns { display: flex; gap: 6px; margin-bottom: 4px; }
+  .quick-btn { flex: 1; padding: 6px 0; font-size: 12px; }
+  .quick-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   #detailCard {
     background: var(--card); border-radius: 18px; padding: 24px;
@@ -415,15 +427,38 @@
       <div id="detailNotTradable" class="not-tradable-note" style="display:none;">방송이 종료되어 지금은 거래할 수 없습니다.</div>
 
       <div class="row"><span>현재 거래량 (분당 채팅수)</span><span id="detailVolume">-</span></div>
-      <div class="row"><span>보유수량</span><span id="detailHolding">-</span></div>
-      <input type="number" id="detailQty" placeholder="수량 입력" min="1" step="1">
-      <div class="row"><span>매수 시 필요 금액</span><span id="detailBuyTotal">0원</span></div>
-      <div class="row"><span>매도 시 실수령액</span><span id="detailSellTotal">0원</span></div>
-      <div class="fee-note">* 매도 시 1% 수수료가 차감된 금액입니다.</div>
-      <div class="actions" style="display:flex;gap:8px;margin-top:12px;">
-        <button class="btn-buy" id="detailBtnBuy" style="flex:1;">매수</button>
-        <button class="btn-sell" id="detailBtnSell" style="flex:1;">매도</button>
+
+      <div class="trade-panel">
+        <div class="trade-panel-title buy">매수</div>
+        <div class="row"><span>보유 현금</span><span id="buyCashInfo">0원</span></div>
+        <div class="row"><span>현재 코인 가격</span><span id="buyPriceInfo">0원</span></div>
+        <input type="number" id="buyQty" placeholder="수량 입력" min="1" step="1">
+        <div class="quick-btns">
+          <button class="ghost quick-btn" data-side="buy" data-pct="0.25">25%</button>
+          <button class="ghost quick-btn" data-side="buy" data-pct="0.5">50%</button>
+          <button class="ghost quick-btn" data-side="buy" data-pct="0.75">75%</button>
+          <button class="ghost quick-btn" data-side="buy" data-pct="1">최대</button>
+        </div>
+        <div class="row"><span>총 매수 금액</span><span id="detailBuyTotal">0원</span></div>
+        <button class="btn-buy" id="detailBtnBuy">매수</button>
       </div>
+
+      <div class="trade-panel">
+        <div class="trade-panel-title sell">매도</div>
+        <div class="row"><span>보유 수량</span><span id="sellHoldingInfo">0주</span></div>
+        <div class="row"><span>현재 코인 가격</span><span id="sellPriceInfo">0원</span></div>
+        <input type="number" id="sellQty" placeholder="수량 입력" min="1" step="1">
+        <div class="quick-btns">
+          <button class="ghost quick-btn" data-side="sell" data-pct="0.25">25%</button>
+          <button class="ghost quick-btn" data-side="sell" data-pct="0.5">50%</button>
+          <button class="ghost quick-btn" data-side="sell" data-pct="0.75">75%</button>
+          <button class="ghost quick-btn" data-side="sell" data-pct="1">전량</button>
+        </div>
+        <div class="row"><span>예상 매도 금액</span><span id="detailSellTotal">0원</span></div>
+        <div class="fee-note">* 매도 시 1% 수수료가 차감된 금액입니다.</div>
+        <button class="btn-sell" id="detailBtnSell">매도</button>
+      </div>
+
       <div id="detailMsg" style="font-size:13px;margin-top:8px;min-height:18px;"></div>
       <button class="ghost detail-close-btn" id="detailBtnClose">닫기</button>
 
@@ -615,7 +650,7 @@ function refreshGuestUI() {
   updatePortfolioValue();
   renderGuestHistory();
   renderAssets();
-  if (selectedCoinId) { refreshModalPrice(); refreshDetail(); }
+  if (selectedCoinId) { refreshDetail(); }
 }
 
 // ====================== 탭 ======================
@@ -723,7 +758,7 @@ function listenToUser(uid) {
     document.getElementById('balanceVal').textContent = fmt(data.balance) + '원';
     updatePortfolioValue();
     renderAssets();
-    if (selectedCoinId) { refreshModalPrice(); refreshDetail(); }
+    if (selectedCoinId) { refreshDetail(); }
   });
 }
 
@@ -897,7 +932,8 @@ function renderAssets() {
 function openDetail(id) {
   selectedCoinId = id;
   document.getElementById('detailMsg').textContent = '';
-  document.getElementById('detailQty').value = '';
+  document.getElementById('buyQty').value = '';
+  document.getElementById('sellQty').value = '';
   refreshDetail();
   document.getElementById('detailBg').classList.add('open');
 }
@@ -934,15 +970,23 @@ function refreshDetail() {
     ? `분당 ${fmt(coinVolume(c))}회`
     : '-';
 
+  const balance = window.__myUser?.balance || 0;
   const holding = (window.__myUser?.holdings || {})[selectedCoinId] || 0;
-  document.getElementById('detailHolding').textContent = holding + '주';
+  document.getElementById('buyCashInfo').textContent = fmt(balance) + '원';
+  document.getElementById('buyPriceInfo').textContent = fmt(c.currentPrice) + '원';
+  document.getElementById('sellPriceInfo').textContent = fmt(c.currentPrice) + '원';
+  document.getElementById('sellHoldingInfo').textContent = holding + '주';
 
   const notTradable = c.tradable !== true;
   document.getElementById('detailNotTradable').style.display = notTradable ? 'block' : 'none';
   document.getElementById('detailBtnBuy').disabled = notTradable;
   document.getElementById('detailBtnSell').disabled = notTradable;
+  document.getElementById('buyQty').disabled = notTradable;
+  document.getElementById('sellQty').disabled = notTradable;
+  document.querySelectorAll('.quick-btn').forEach(btn => { btn.disabled = notTradable; });
 
-  updateDetailTotal();
+  updateBuyTotal();
+  updateSellTotal();
 }
 
 function renderDetailCountdown() {
@@ -1099,25 +1143,52 @@ function renderRecentPriceTable(history) {
   body.innerHTML = rows.join('');
 }
 
-document.getElementById('detailQty').addEventListener('input', updateDetailTotal);
-function updateDetailTotal() {
-  const qty = parseInt(document.getElementById('detailQty').value) || 0;
+document.getElementById('buyQty').addEventListener('input', updateBuyTotal);
+function updateBuyTotal() {
+  const qty = parseInt(document.getElementById('buyQty').value) || 0;
+  const price = coinsCache[selectedCoinId]?.currentPrice || 0;
+  document.getElementById('detailBuyTotal').textContent = fmt(qty * price) + '원';
+}
+
+document.getElementById('sellQty').addEventListener('input', updateSellTotal);
+function updateSellTotal() {
+  const qty = parseInt(document.getElementById('sellQty').value) || 0;
   const price = coinsCache[selectedCoinId]?.currentPrice || 0;
   const gross = qty * price;
   const fee = Math.round(gross * SELL_FEE_RATE);
-  document.getElementById('detailBuyTotal').textContent = fmt(gross) + '원';
   document.getElementById('detailSellTotal').textContent = fmt(gross - fee) + '원';
 }
+
+// 25%/50%/75%/최대(전량) 버튼: 매수는 보유 현금 기준, 매도는 보유 수량 기준으로 수량을 자동 계산한다.
+document.querySelectorAll('.quick-btn').forEach(btn => {
+  btn.onclick = () => {
+    const pct = parseFloat(btn.dataset.pct);
+    const price = coinsCache[selectedCoinId]?.currentPrice || 0;
+    if (btn.dataset.side === 'buy') {
+      const cash = window.__myUser?.balance || 0;
+      const maxQty = price > 0 ? Math.floor(cash / price) : 0;
+      document.getElementById('buyQty').value = Math.floor(maxQty * pct);
+      updateBuyTotal();
+    } else {
+      const holding = (window.__myUser?.holdings || {})[selectedCoinId] || 0;
+      document.getElementById('sellQty').value = Math.floor(holding * pct);
+      updateSellTotal();
+    }
+  };
+});
+
 document.getElementById('detailBtnBuy').onclick = () => tradeFromDetail('buy');
 document.getElementById('detailBtnSell').onclick = () => tradeFromDetail('sell');
 
 async function tradeFromDetail(type) {
-  const qty = parseInt(document.getElementById('detailQty').value);
+  const inputId = type === 'buy' ? 'buyQty' : 'sellQty';
+  const qty = parseInt(document.getElementById(inputId).value);
   const msgEl = document.getElementById('detailMsg');
   if (!qty || qty <= 0) { msgEl.style.color = 'salmon'; msgEl.textContent = '수량을 정확히 입력하세요.'; return; }
   await executeTrade(type, selectedCoinId, qty, msgEl);
-  document.getElementById('detailQty').value = '';
-  updateDetailTotal();
+  document.getElementById(inputId).value = '';
+  updateBuyTotal();
+  updateSellTotal();
 }
 
 // ====================== 매수/매도 실행 ======================
