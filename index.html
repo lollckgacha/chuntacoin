@@ -214,19 +214,15 @@
   }
   .actions { display: flex; gap: 8px; margin-top: 16px; }
   .actions button { flex: 1; }
-  .btn-buy { background: var(--up); color: #250406; width: 100%; margin-top: 10px; }
-  .btn-sell { background: var(--down); color: #04122a; width: 100%; margin-top: 10px; }
+  .btn-buy { background: var(--up); color: #250406; }
+  .btn-sell { background: var(--down); color: #04122a; }
   .fee-note { font-size: 11px; color: var(--muted); margin-top: -6px; margin-bottom: 8px; }
 
-  .trade-panel {
-    background: rgba(255,255,255,0.03); border: 1px solid var(--border);
-    border-radius: 12px; padding: 14px; margin-top: 12px;
-  }
-  .trade-panel-title { font-size: 14px; font-weight: 800; margin-bottom: 8px; }
-  .trade-panel-title.buy { color: var(--up); }
-  .trade-panel-title.sell { color: var(--down); }
-  .trade-panel input { margin: 8px 0; }
-  .quick-btns { display: flex; gap: 6px; margin-bottom: 4px; }
+  .quick-btns-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+  .quick-btns-label { font-size: 12px; font-weight: 800; width: 32px; flex-shrink: 0; }
+  .quick-btns-label.buy { color: var(--up); }
+  .quick-btns-label.sell { color: var(--down); }
+  .quick-btns { display: flex; gap: 6px; flex: 1; }
   .quick-btn { flex: 1; padding: 6px 0; font-size: 12px; }
   .quick-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
@@ -400,7 +396,7 @@
   <div id="coinListWrap">
     <div class="coin-sort-bar">
       <button class="coin-sort-btn active" data-sort="default" onclick="setCoinSortMode('default')">기본순</button>
-      <button class="coin-sort-btn" data-sort="volume" onclick="setCoinSortMode('volume')">거래량순</button>
+      <button class="coin-sort-btn" data-sort="price" onclick="setCoinSortMode('price')">가격순</button>
     </div>
     <div id="coinList"></div>
   </div>
@@ -431,38 +427,35 @@
       <div id="detailNotTradable" class="not-tradable-note" style="display:none;">방송이 종료되어 지금은 거래할 수 없습니다.</div>
 
       <div class="row"><span>현재 거래량 (분당 채팅수)</span><span id="detailVolume">-</span></div>
+      <div class="row"><span>보유수량</span><span id="detailHolding">-</span></div>
+      <input type="number" id="detailQty" placeholder="수량 입력" min="1" step="1">
 
-      <div class="trade-panel">
-        <div class="trade-panel-title buy">매수</div>
-        <div class="row"><span>보유 현금</span><span id="buyCashInfo">0원</span></div>
-        <div class="row"><span>현재 코인 가격</span><span id="buyPriceInfo">0원</span></div>
-        <input type="number" id="buyQty" placeholder="수량 입력" min="1" step="1">
+      <div class="quick-btns-row">
+        <span class="quick-btns-label buy">매수</span>
         <div class="quick-btns">
           <button class="ghost quick-btn" data-side="buy" data-pct="0.25">25%</button>
           <button class="ghost quick-btn" data-side="buy" data-pct="0.5">50%</button>
           <button class="ghost quick-btn" data-side="buy" data-pct="0.75">75%</button>
           <button class="ghost quick-btn" data-side="buy" data-pct="1">최대</button>
         </div>
-        <div class="row"><span>총 매수 금액</span><span id="detailBuyTotal">0원</span></div>
-        <button class="btn-buy" id="detailBtnBuy">매수</button>
       </div>
-
-      <div class="trade-panel">
-        <div class="trade-panel-title sell">매도</div>
-        <div class="row"><span>보유 수량</span><span id="sellHoldingInfo">0주</span></div>
-        <div class="row"><span>현재 코인 가격</span><span id="sellPriceInfo">0원</span></div>
-        <input type="number" id="sellQty" placeholder="수량 입력" min="1" step="1">
+      <div class="quick-btns-row">
+        <span class="quick-btns-label sell">매도</span>
         <div class="quick-btns">
           <button class="ghost quick-btn" data-side="sell" data-pct="0.25">25%</button>
           <button class="ghost quick-btn" data-side="sell" data-pct="0.5">50%</button>
           <button class="ghost quick-btn" data-side="sell" data-pct="0.75">75%</button>
           <button class="ghost quick-btn" data-side="sell" data-pct="1">전량</button>
         </div>
-        <div class="row"><span>예상 매도 금액</span><span id="detailSellTotal">0원</span></div>
-        <div class="fee-note">* 매도 시 1% 수수료가 차감된 금액입니다.</div>
-        <button class="btn-sell" id="detailBtnSell">매도</button>
       </div>
 
+      <div class="row"><span>매수 시 필요 금액</span><span id="detailBuyTotal">0원</span></div>
+      <div class="row"><span>매도 시 실수령액</span><span id="detailSellTotal">0원</span></div>
+      <div class="fee-note">* 매도 시 1% 수수료가 차감된 금액입니다.</div>
+      <div class="actions" style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn-buy" id="detailBtnBuy" style="flex:1;">매수</button>
+        <button class="btn-sell" id="detailBtnSell" style="flex:1;">매도</button>
+      </div>
       <div id="detailMsg" style="font-size:13px;margin-top:8px;min-height:18px;"></div>
       <button class="ghost detail-close-btn" id="detailBtnClose">닫기</button>
 
@@ -662,7 +655,10 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + tab).classList.add('active');
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  if (tab === 'assets') renderAssets();
+  if (tab === 'assets') {
+    renderAssets();
+    if (currentUser) loadHistoryOnce(currentUser.uid);
+  }
 }
 
 // ====================== 인증 ======================
@@ -688,7 +684,7 @@ auth.onAuthStateChanged(async (user) => {
     await ensureAccount();
     await claimDailyBonus();
     listenToUser(user.uid);
-    listenToHistory(user.uid);
+    if (document.getElementById('tab-assets').classList.contains('active')) loadHistoryOnce(user.uid);
   } else {
     currentUser = null;
     document.getElementById('guestBanner').style.display = 'flex';
@@ -781,31 +777,35 @@ function listenToCoins() {
   });
 }
 
-function listenToHistory(uid) {
-  db.collection('transactions')
-    .where('uid', '==', uid)
-    .orderBy('timestamp', 'desc')
-    .limit(30)
-    .onSnapshot((snap) => {
-      const rows = [];
-      snap.forEach(doc => {
-        const d = doc.data();
-        rows.push(`<tr>
-          <td>${formatKST(d.timestamp)}</td>
-          <td>${STREAMER_META[d.streamerId]?.name || coinsCache[d.streamerId]?.name || d.streamerId}</td>
-          <td>${d.type === 'buy' ? '매수' : '매도'}</td>
-          <td>${d.qty}</td>
-          <td>${fmt(d.price)}원</td>
-        </tr>`);
-      });
-      document.getElementById('historyBody').innerHTML = rows.length
-        ? rows.join('')
-        : '<tr><td colspan="5" style="text-align:center;color:var(--text-dim,#888)">거래 내역이 없습니다</td></tr>';
-    }, (err) => {
-      console.error('거래내역 조회 실패:', err);
-      document.getElementById('historyBody').innerHTML =
-        '<tr><td colspan="5" style="text-align:center;color:var(--down,#4d8dff)">거래 내역을 불러오지 못했습니다</td></tr>';
+// 거래내역은 실시간 리스너 대신, 자산 탭을 열 때만 1회 조회한다.
+// (상시 onSnapshot으로 두면 다른 탭을 보고 있는 동안의 거래에도 계속 읽기 비용이 발생함)
+async function loadHistoryOnce(uid) {
+  const body = document.getElementById('historyBody');
+  try {
+    const snap = await db.collection('transactions')
+      .where('uid', '==', uid)
+      .orderBy('timestamp', 'desc')
+      .limit(30)
+      .get();
+    const rows = [];
+    snap.forEach(doc => {
+      const d = doc.data();
+      rows.push(`<tr>
+        <td>${formatKST(d.timestamp)}</td>
+        <td>${STREAMER_META[d.streamerId]?.name || coinsCache[d.streamerId]?.name || d.streamerId}</td>
+        <td>${d.type === 'buy' ? '매수' : '매도'}</td>
+        <td>${d.qty}</td>
+        <td>${fmt(d.price)}원</td>
+      </tr>`);
     });
+    body.innerHTML = rows.length
+      ? rows.join('')
+      : '<tr><td colspan="5" style="text-align:center;color:var(--text-dim,#888)">거래 내역이 없습니다</td></tr>';
+  } catch (err) {
+    console.error('거래내역 조회 실패:', err);
+    body.innerHTML =
+      '<tr><td colspan="5" style="text-align:center;color:var(--down,#4d8dff)">거래 내역을 불러오지 못했습니다</td></tr>';
+  }
 }
 
 // ====================== 공통 유틸 ======================
@@ -818,7 +818,7 @@ function coinVolume(coin) {
   return samples.length > 0 ? samples[samples.length - 1].v : 0;
 }
 
-let coinSortMode = 'default'; // 'default' | 'volume'
+let coinSortMode = 'default'; // 'default' | 'price'
 
 function sortedCoinIds() {
   return Object.keys(coinsCache).sort((a, b) => {
@@ -826,8 +826,8 @@ function sortedCoinIds() {
     const ta = ca.tradable === true, tb = cb.tradable === true;
     if (ta !== tb) return ta ? -1 : 1; // 거래가능 코인이 항상 위로
 
-    if (coinSortMode === 'volume') {
-      return coinVolume(cb) - coinVolume(ca);
+    if (coinSortMode === 'price') {
+      return (cb.currentPrice || 0) - (ca.currentPrice || 0);
     }
     const ia = STREAMER_ORDER.indexOf(a), ib = STREAMER_ORDER.indexOf(b);
     if (ia === -1 && ib === -1) return a.localeCompare(b);
@@ -937,8 +937,7 @@ function openDetail(id) {
   selectedCoinId = id;
   chartPanOffset = 0;
   document.getElementById('detailMsg').textContent = '';
-  document.getElementById('buyQty').value = '';
-  document.getElementById('sellQty').value = '';
+  document.getElementById('detailQty').value = '';
   refreshDetail();
   document.getElementById('detailBg').classList.add('open');
 }
@@ -975,23 +974,17 @@ function refreshDetail() {
     ? `분당 ${fmt(coinVolume(c))}회`
     : '-';
 
-  const balance = window.__myUser?.balance || 0;
   const holding = (window.__myUser?.holdings || {})[selectedCoinId] || 0;
-  document.getElementById('buyCashInfo').textContent = fmt(balance) + '원';
-  document.getElementById('buyPriceInfo').textContent = fmt(c.currentPrice) + '원';
-  document.getElementById('sellPriceInfo').textContent = fmt(c.currentPrice) + '원';
-  document.getElementById('sellHoldingInfo').textContent = holding + '주';
+  document.getElementById('detailHolding').textContent = holding + '주';
 
   const notTradable = c.tradable !== true;
   document.getElementById('detailNotTradable').style.display = notTradable ? 'block' : 'none';
   document.getElementById('detailBtnBuy').disabled = notTradable;
   document.getElementById('detailBtnSell').disabled = notTradable;
-  document.getElementById('buyQty').disabled = notTradable;
-  document.getElementById('sellQty').disabled = notTradable;
+  document.getElementById('detailQty').disabled = notTradable;
   document.querySelectorAll('.quick-btn').forEach(btn => { btn.disabled = notTradable; });
 
-  updateBuyTotal();
-  updateSellTotal();
+  updateDetailTotal();
 }
 
 function renderDetailCountdown() {
@@ -1177,37 +1170,32 @@ function renderRecentPriceTable(history) {
   body.innerHTML = rows.join('');
 }
 
-document.getElementById('buyQty').addEventListener('input', updateBuyTotal);
-function updateBuyTotal() {
-  const qty = parseInt(document.getElementById('buyQty').value) || 0;
-  const price = coinsCache[selectedCoinId]?.currentPrice || 0;
-  document.getElementById('detailBuyTotal').textContent = fmt(qty * price) + '원';
-}
-
-document.getElementById('sellQty').addEventListener('input', updateSellTotal);
-function updateSellTotal() {
-  const qty = parseInt(document.getElementById('sellQty').value) || 0;
+document.getElementById('detailQty').addEventListener('input', updateDetailTotal);
+function updateDetailTotal() {
+  const qty = parseInt(document.getElementById('detailQty').value) || 0;
   const price = coinsCache[selectedCoinId]?.currentPrice || 0;
   const gross = qty * price;
   const fee = Math.round(gross * SELL_FEE_RATE);
+  document.getElementById('detailBuyTotal').textContent = fmt(gross) + '원';
   document.getElementById('detailSellTotal').textContent = fmt(gross - fee) + '원';
 }
 
-// 25%/50%/75%/최대(전량) 버튼: 매수는 보유 현금 기준, 매도는 보유 수량 기준으로 수량을 자동 계산한다.
+// 25%/50%/75%/최대(전량) 버튼: 매수는 보유 현금 기준, 매도는 보유 수량 기준으로 수량을 자동 계산해
+// 공용 수량 입력칸을 채워준다.
 document.querySelectorAll('.quick-btn').forEach(btn => {
   btn.onclick = () => {
     const pct = parseFloat(btn.dataset.pct);
     const price = coinsCache[selectedCoinId]?.currentPrice || 0;
+    let qty;
     if (btn.dataset.side === 'buy') {
       const cash = window.__myUser?.balance || 0;
-      const maxQty = price > 0 ? Math.floor(cash / price) : 0;
-      document.getElementById('buyQty').value = Math.floor(maxQty * pct);
-      updateBuyTotal();
+      qty = price > 0 ? Math.floor(Math.floor(cash / price) * pct) : 0;
     } else {
       const holding = (window.__myUser?.holdings || {})[selectedCoinId] || 0;
-      document.getElementById('sellQty').value = Math.floor(holding * pct);
-      updateSellTotal();
+      qty = Math.floor(holding * pct);
     }
+    document.getElementById('detailQty').value = qty;
+    updateDetailTotal();
   };
 });
 
@@ -1215,14 +1203,12 @@ document.getElementById('detailBtnBuy').onclick = () => tradeFromDetail('buy');
 document.getElementById('detailBtnSell').onclick = () => tradeFromDetail('sell');
 
 async function tradeFromDetail(type) {
-  const inputId = type === 'buy' ? 'buyQty' : 'sellQty';
-  const qty = parseInt(document.getElementById(inputId).value);
+  const qty = parseInt(document.getElementById('detailQty').value);
   const msgEl = document.getElementById('detailMsg');
   if (!qty || qty <= 0) { msgEl.style.color = 'salmon'; msgEl.textContent = '수량을 정확히 입력하세요.'; return; }
   await executeTrade(type, selectedCoinId, qty, msgEl);
-  document.getElementById(inputId).value = '';
-  updateBuyTotal();
-  updateSellTotal();
+  document.getElementById('detailQty').value = '';
+  updateDetailTotal();
 }
 
 // ====================== 매수/매도 실행 ======================
