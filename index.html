@@ -16,6 +16,7 @@
     --text: #eef1f5;
     --muted: #868c9c;
     --border: #23262f;
+    --page-max: 1440px; /* 와이드 모니터에서 본문이 무한정 늘어나지 않도록 최대 폭 고정 */
   }
   * { box-sizing: border-box; }
   body {
@@ -25,15 +26,16 @@
     font-family: 'Pretendard', 'Apple SD Gothic Neo', -apple-system, sans-serif;
   }
   header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     padding: 14px 24px;
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
     background: var(--bg);
     z-index: 20;
+  }
+  .header-inner {
+    display: flex; justify-content: space-between; align-items: center;
+    max-width: var(--page-max); margin: 0 auto;
   }
   .brand { display: flex; align-items: center; gap: 10px; }
   .brand-logo { width: 30px; height: 30px; border-radius: 8px; object-fit: cover; }
@@ -59,10 +61,13 @@
 
   /* ====================== 탭 ====================== */
   #tabBar {
-    display: flex; gap: 4px;
     padding: 10px 24px 0;
     position: sticky; top: 57px; background: var(--bg); z-index: 15;
     border-bottom: 1px solid var(--border);
+  }
+  .tabbar-inner {
+    display: flex; gap: 4px;
+    max-width: var(--page-max); margin: 0 auto;
   }
   .tab-btn {
     background: transparent; color: var(--muted); font-weight: 700;
@@ -78,7 +83,10 @@
     gap: 24px;
     padding: 16px 24px;
     background: var(--card);
-    margin: 16px 24px;
+    margin-top: 16px; margin-bottom: 16px;
+    margin-left: max(24px, calc((100% - var(--page-max)) / 2));
+    margin-right: max(24px, calc((100% - var(--page-max)) / 2));
+    max-width: var(--page-max);
     border-radius: 12px;
     align-items: center;
     flex-wrap: wrap;
@@ -131,7 +139,10 @@
   .coin-row-change.flat { color: var(--muted); }
 
   /* ====================== 자산 탭 ====================== */
-  #assetsList { padding: 0 24px 24px; display: flex; flex-direction: column; gap: 8px; }
+  #assetsList {
+    padding: 0 24px 24px; display: flex; flex-direction: column; gap: 8px;
+    max-width: var(--page-max); margin-left: auto; margin-right: auto;
+  }
   .asset-row {
     display: flex; align-items: center; gap: 12px;
     background: var(--card); border: 1px solid var(--border);
@@ -148,7 +159,7 @@
   .empty-state { padding: 40px 20px; text-align: center; color: var(--muted); }
 
   /* ====================== 설명서 탭 ====================== */
-  #guideContent { padding: 0 24px 40px; max-width: 720px; }
+  #guideContent { padding: 0 24px 40px; max-width: 720px; margin: 0 auto; }
   #guideContent h3 { color: var(--accent); margin: 24px 0 8px; font-size: 15px; }
   #guideContent h3:first-child { margin-top: 0; }
   #guideContent p, #guideContent li { font-size: 13px; color: var(--text); line-height: 1.7; }
@@ -161,7 +172,10 @@
   #guideContent .muted { color: var(--muted); font-size: 12px; }
 
   #historyPanel {
-    margin: 0 24px 40px;
+    margin-top: 0; margin-bottom: 40px;
+    margin-left: max(24px, calc((100% - var(--page-max)) / 2));
+    margin-right: max(24px, calc((100% - var(--page-max)) / 2));
+    max-width: var(--page-max);
     background: var(--card);
     border-radius: 12px;
     padding: 16px;
@@ -175,7 +189,10 @@
   #guestBanner {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     flex-wrap: wrap;
-    margin: 16px 24px 0;
+    margin-top: 16px; margin-bottom: 0;
+    margin-left: max(24px, calc((100% - var(--page-max)) / 2));
+    margin-right: max(24px, calc((100% - var(--page-max)) / 2));
+    max-width: var(--page-max);
     padding: 12px 16px;
     background: var(--accent-dim);
     border: 1px solid rgba(24,215,242,0.35);
@@ -188,7 +205,10 @@
 
   #migrateNotice {
     display: flex; align-items: center;
-    margin: 16px 24px 0;
+    margin-top: 16px; margin-bottom: 0;
+    margin-left: max(24px, calc((100% - var(--page-max)) / 2));
+    margin-right: max(24px, calc((100% - var(--page-max)) / 2));
+    max-width: var(--page-max);
     padding: 12px 16px;
     background: rgba(74,222,128,0.12);
     border: 1px solid rgba(74,222,128,0.4);
@@ -299,6 +319,7 @@
     #tab-exchange.active {
       display: flex; align-items: flex-start; gap: 20px;
       padding: 0 24px 24px;
+      max-width: var(--page-max); margin-left: auto; margin-right: auto;
     }
     #tab-exchange.active #coinListWrap { flex: 0 0 380px; display: flex; flex-direction: column; max-height: 78vh; }
     #tab-exchange.active .coin-sort-bar { padding: 0 0 10px; }
@@ -351,17 +372,21 @@
 <body>
 
 <header>
-  <div class="brand">
-    <img src="images/logo.png" class="brand-logo" onerror="this.style.display='none'">
-    <h1>천타버스 코인 거래소</h1>
+  <div class="header-inner">
+    <div class="brand">
+      <img src="images/logo.png" class="brand-logo" onerror="this.style.display='none'">
+      <h1>천타버스 코인 거래소</h1>
+    </div>
+    <div id="authArea"></div>
   </div>
-  <div id="authArea"></div>
 </header>
 
 <nav id="tabBar">
-  <button class="tab-btn active" data-tab="exchange" onclick="switchTab('exchange')">거래소</button>
-  <button class="tab-btn" data-tab="assets" onclick="switchTab('assets')">자산</button>
-  <button class="tab-btn" data-tab="guide" onclick="switchTab('guide')">설명서</button>
+  <div class="tabbar-inner">
+    <button class="tab-btn active" data-tab="exchange" onclick="switchTab('exchange')">거래소</button>
+    <button class="tab-btn" data-tab="assets" onclick="switchTab('assets')">자산</button>
+    <button class="tab-btn" data-tab="guide" onclick="switchTab('guide')">설명서</button>
+  </div>
 </nav>
 
 <div id="guestBanner" style="display:none;">
