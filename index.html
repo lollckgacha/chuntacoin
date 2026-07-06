@@ -84,7 +84,7 @@
     flex-wrap: wrap;
   }
   #balanceBar .stat { display: flex; flex-direction: column; }
-  #balanceBar .stat .label { font-size: 12px; color: var(--muted); }
+  #balanceBar .stat .label { font-size: 12px; color: var(--accent); font-weight: 700; }
   #balanceBar .stat .value { font-size: 20px; font-weight: 700; }
   #dailyBonusMsg { font-size: 12px; color: var(--accent); margin-left: auto; }
 
@@ -232,8 +232,26 @@
   .detail-change { font-size: 14px; font-weight: 700; margin-top: 4px; }
   .chart-wrap { position: relative; margin: 12px 0; }
   .chart-toolbar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
-  .chart-toolbar button { padding: 4px 10px; font-size: 11px; border-radius: 6px; }
-  #detailChart { width: 100%; height: 90px; display: block; cursor: crosshair; }
+  .chart-toolbar button {
+    padding: 4px 12px; font-size: 11px; border-radius: 6px;
+    background: var(--accent); color: #04121a; border: none; font-weight: 700;
+  }
+  .chart-plot { position: relative; }
+  #detailChart { width: calc(100% - 46px); height: 90px; display: block; cursor: crosshair; }
+  .chart-axis-y {
+    position: absolute; top: 0; right: 0; width: 46px; height: 90px; pointer-events: none;
+  }
+  .chart-axis-y span {
+    position: absolute; right: 4px; transform: translateY(-50%);
+    font-size: 10px; color: var(--accent); white-space: nowrap;
+  }
+  .chart-axis-x {
+    position: relative; width: calc(100% - 46px); height: 16px; margin-top: 2px;
+  }
+  .chart-axis-x span {
+    position: absolute; transform: translateX(-50%);
+    font-size: 10px; color: var(--accent); white-space: nowrap;
+  }
   .chart-tooltip {
     position: absolute; display: none; pointer-events: none;
     background: rgba(20,22,28,0.95); border: 1px solid var(--accent);
@@ -251,8 +269,9 @@
   .toast.error { border-color: var(--down); }
   .detail-close-btn { width: 100%; margin-top: 14px; }
   .not-tradable-note {
-    text-align: center; font-size: 12px; color: var(--muted);
-    background: rgba(134,140,156,0.1); border-radius: 8px; padding: 8px; margin: 8px 0;
+    text-align: center; font-size: 12px; color: var(--accent); font-weight: 700;
+    background: var(--accent-dim); border: 1px solid rgba(24,215,242,0.35);
+    border-radius: 8px; padding: 8px; margin: 8px 0;
   }
   #recentPriceTable { margin-top: 20px; }
   #recentPriceTable h3 { font-size: 14px; margin-bottom: 8px; color: var(--muted); font-weight: 700; }
@@ -371,8 +390,12 @@
         <div class="chart-toolbar">
           <button class="ghost" id="chartModeToggle" type="button">캔들 보기</button>
         </div>
-        <svg id="detailChart" viewBox="0 0 100 40" preserveAspectRatio="none"></svg>
-        <div class="chart-tooltip" id="chartTooltip"></div>
+        <div class="chart-plot">
+          <svg id="detailChart" viewBox="0 0 100 40" preserveAspectRatio="none"></svg>
+          <div class="chart-axis-y" id="chartAxisY"></div>
+          <div class="chart-tooltip" id="chartTooltip"></div>
+        </div>
+        <div class="chart-axis-x" id="chartAxisX"></div>
       </div>
       <div id="detailNotTradable" class="not-tradable-note" style="display:none;">방송이 종료되어 지금은 거래할 수 없습니다.</div>
 
@@ -510,6 +533,11 @@ function formatKST(ts) {
   if (!ts) return '-';
   const d = ts?.toDate ? ts.toDate() : new Date(ts);
   return d.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+}
+function formatKSTTime(ts) {
+  if (!ts) return '-';
+  const d = ts?.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' });
 }
 
 // ====================== 게스트(로컬 저장) 모드 ======================
@@ -920,8 +948,12 @@ function groupIntoCandles(history, groupMinutes) {
 
 function renderDetailChart(history) {
   const svg = document.getElementById('detailChart');
+  const axisX = document.getElementById('chartAxisX');
+  const axisY = document.getElementById('chartAxisY');
   if (!Array.isArray(history) || history.length < 2) {
     svg.innerHTML = '';
+    axisX.innerHTML = '';
+    axisY.innerHTML = '';
     lastChartCandles = [];
     document.getElementById('chartTooltip').style.display = 'none';
     return;
@@ -954,6 +986,22 @@ function renderDetailChart(history) {
     }).join('');
     svg.innerHTML = parts;
   }
+
+  // 하단(시간)/우측(가격) 축 라벨 - 휠 확대축소로 캔들 구성(그룹 분단위)이 바뀔 때마다 다시 계산됨
+  const xTickCount = Math.min(5, n);
+  const xTickIdx = [...new Set(
+    Array.from({ length: xTickCount }, (_, i) => Math.round((i / (xTickCount - 1 || 1)) * (n - 1)))
+  )];
+  axisX.innerHTML = xTickIdx.map(idx => {
+    const leftPct = idx * barW + barW / 2;
+    return `<span style="left:${leftPct.toFixed(2)}%">${formatKSTTime(candles[idx].t)}</span>`;
+  }).join('');
+
+  const yTickValues = [max, min + range / 2, min];
+  axisY.innerHTML = yTickValues.map(v => {
+    const topPct = (mapY(v) / 40) * 100;
+    return `<span style="top:${topPct.toFixed(2)}%">${fmt(v)}</span>`;
+  }).join('');
 }
 
 document.getElementById('chartModeToggle').onclick = () => {
