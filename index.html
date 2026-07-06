@@ -251,13 +251,17 @@
   .chart-wrap { position: relative; margin: 12px 0; }
   .chart-toolbar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
   .chart-toolbar button {
-    padding: 4px 12px; font-size: 11px; border-radius: 6px;
-    background: var(--accent); color: #04121a; border: none; font-weight: 700;
+    padding: 9px 20px; font-size: 14px; border-radius: 8px;
+    background: var(--accent); color: #04121a; border: none; font-weight: 800;
   }
   .chart-plot { position: relative; }
-  #detailChart { width: calc(100% - 46px); height: 90px; display: block; cursor: crosshair; }
+  #detailChart {
+    width: calc(100% - 46px); height: 160px; display: block;
+    cursor: grab; touch-action: none;
+  }
+  #detailChart.dragging { cursor: grabbing; }
   .chart-axis-y {
-    position: absolute; top: 0; right: 0; width: 46px; height: 90px; pointer-events: none;
+    position: absolute; top: 0; right: 0; width: 46px; height: 160px; pointer-events: none;
   }
   .chart-axis-y span {
     position: absolute; right: 4px; transform: translateY(-50%);
@@ -931,6 +935,7 @@ function renderAssets() {
 // ====================== 코인 상세 화면 ======================
 function openDetail(id) {
   selectedCoinId = id;
+  chartPanOffset = 0;
   document.getElementById('detailMsg').textContent = '';
   document.getElementById('buyQty').value = '';
   document.getElementById('sellQty').value = '';
@@ -1001,10 +1006,12 @@ function renderDetailCountdown() {
   el.textContent = `가격 갱신 시작까지 ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// ====================== 코인 상세 차트 (캔들/라인 토글, 호버 툴팁, 휠 확대축소) ======================
+// ====================== 코인 상세 차트 (캔들/라인 토글, 호버 툴팁, 휠 확대축소, 드래그 이동) ======================
 const CHART_ZOOM_LEVELS = [1, 2, 5, 10, 15, 30]; // 캔들 1개당 분(分) 단위
+const CHART_WINDOW_SIZE = 60; // 화면에 한 번에 보여줄 캔들 개수
 let chartZoomIndex = 0;
 let chartMode = 'line'; // 'candle' | 'line' (기본값: 최초 버전처럼 깔끔한 선 그래프)
+let chartPanOffset = 0; // 0 = 최신 구간, 값이 클수록 과거 구간을 보여줌
 let lastChartCandles = []; // 마지막으로 그린 캔들 목록 (툴팁 조회용)
 
 // 원본 1분 단위 시세 히스토리를 groupMinutes 단위로 묶어 OHLC 캔들로 변환한다.
@@ -1047,7 +1054,12 @@ function renderDetailChart(history) {
     return;
   }
   const groupMinutes = CHART_ZOOM_LEVELS[chartZoomIndex];
-  const candles = groupIntoCandles(history, groupMinutes).slice(-60); // 화면에는 최대 60개까지
+  const allCandles = groupIntoCandles(history, groupMinutes);
+  const maxOffset = Math.max(0, allCandles.length - CHART_WINDOW_SIZE);
+  chartPanOffset = Math.min(Math.max(chartPanOffset, 0), maxOffset);
+  const endIdx = allCandles.length - chartPanOffset;
+  const startIdx = Math.max(0, endIdx - CHART_WINDOW_SIZE);
+  const candles = allCandles.slice(startIdx, endIdx);
   lastChartCandles = candles;
 
   const highs = candles.map(c => c.h), lows = candles.map(c => c.l);
@@ -1100,28 +1112,61 @@ document.getElementById('chartModeToggle').onclick = () => {
 
 const detailChartSvg = document.getElementById('detailChart');
 const chartTooltipEl = document.getElementById('chartTooltip');
+let chartDrag = null; // { pointerId, startX, startOffset }
 
-detailChartSvg.addEventListener('mousemove', (e) => {
+function showChartTooltip(clientX, clientY) {
   if (!lastChartCandles.length) return;
   const rect = detailChartSvg.getBoundingClientRect();
-  const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 0.999999);
+  const ratio = Math.min(Math.max((clientX - rect.left) / rect.width, 0), 0.999999);
   const idx = Math.floor(ratio * lastChartCandles.length);
   const c = lastChartCandles[idx];
   if (!c) return;
   chartTooltipEl.style.display = 'block';
-  chartTooltipEl.style.left = `${e.clientX - rect.left + 8}px`;
-  chartTooltipEl.style.top = `${e.clientY - rect.top}px`;
+  chartTooltipEl.style.left = `${clientX - rect.left + 8}px`;
+  chartTooltipEl.style.top = `${clientY - rect.top}px`;
   chartTooltipEl.innerHTML = chartMode === 'line'
     ? `${formatKST(c.t)}<br>${fmt(c.c)}원`
     : `${formatKST(c.t)}<br>시 ${fmt(c.o)} · 고 ${fmt(c.h)}<br>저 ${fmt(c.l)} · 종 ${fmt(c.c)}`;
+}
+
+detailChartSvg.addEventListener('pointerdown', (e) => {
+  if (!lastChartCandles.length) return;
+  chartDrag = { pointerId: e.pointerId, startX: e.clientX, startOffset: chartPanOffset };
+  detailChartSvg.setPointerCapture(e.pointerId);
+  detailChartSvg.classList.add('dragging');
+  chartTooltipEl.style.display = 'none';
 });
-detailChartSvg.addEventListener('mouseleave', () => { chartTooltipEl.style.display = 'none'; });
+detailChartSvg.addEventListener('pointermove', (e) => {
+  if (chartDrag && chartDrag.pointerId === e.pointerId) {
+    // 왼쪽에서 오른쪽으로 드래그(dx>0)하면 과거 구간이 보이도록 offset을 늘린다.
+    const rect = detailChartSvg.getBoundingClientRect();
+    const candleWidthPx = rect.width / (lastChartCandles.length || 1);
+    const dx = e.clientX - chartDrag.startX;
+    const deltaCandles = Math.round(dx / candleWidthPx);
+    chartPanOffset = chartDrag.startOffset + deltaCandles;
+    renderDetailChart(coinsCache[selectedCoinId]?.priceHistory);
+    return;
+  }
+  showChartTooltip(e.clientX, e.clientY);
+});
+function endChartDrag(e) {
+  if (chartDrag && chartDrag.pointerId === e.pointerId) {
+    chartDrag = null;
+    detailChartSvg.classList.remove('dragging');
+  }
+}
+detailChartSvg.addEventListener('pointerup', endChartDrag);
+detailChartSvg.addEventListener('pointercancel', endChartDrag);
+detailChartSvg.addEventListener('pointerleave', () => {
+  if (!chartDrag) chartTooltipEl.style.display = 'none';
+});
 detailChartSvg.addEventListener('wheel', (e) => {
   if (!coinsCache[selectedCoinId]) return;
   e.preventDefault();
   chartZoomIndex = e.deltaY < 0
     ? Math.max(0, chartZoomIndex - 1)
     : Math.min(CHART_ZOOM_LEVELS.length - 1, chartZoomIndex + 1);
+  chartPanOffset = 0; // 확대/축소 시 최신 구간으로 초기화
   renderDetailChart(coinsCache[selectedCoinId].priceHistory);
 }, { passive: false });
 
