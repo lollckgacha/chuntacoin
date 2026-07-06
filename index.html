@@ -419,7 +419,7 @@
       </div>
       <div class="chart-wrap" id="chartWrap">
         <div class="chart-toolbar">
-          <button class="ghost" id="chartModeToggle" type="button">캔들 보기</button>
+          <button class="ghost" id="chartModeToggle" type="button">라인 보기</button>
         </div>
         <div class="chart-plot">
           <svg id="detailChart" viewBox="0 0 100 40" preserveAspectRatio="none"></svg>
@@ -1010,7 +1010,7 @@ function renderDetailCountdown() {
 const CHART_ZOOM_LEVELS = [1, 2, 5, 10, 15, 30]; // 캔들 1개당 분(分) 단위
 const CHART_WINDOW_SIZE = 60; // 화면에 한 번에 보여줄 캔들 개수
 let chartZoomIndex = 0;
-let chartMode = 'line'; // 'candle' | 'line' (기본값: 최초 버전처럼 깔끔한 선 그래프)
+let chartMode = 'candle'; // 'candle' | 'line' (기본값: 캔들 보기)
 let chartPanOffset = 0; // 0 = 최신 구간, 값이 클수록 과거 구간을 보여줌
 let lastChartCandles = []; // 마지막으로 그린 캔들 목록 (툴팁 조회용)
 
