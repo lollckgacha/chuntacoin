@@ -1006,10 +1006,8 @@ function renderDetailCountdown() {
   el.textContent = `가격 갱신 시작까지 ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// ====================== 코인 상세 차트 (캔들/라인 토글, 호버 툴팁, 휠 확대축소, 드래그 이동) ======================
-const CHART_ZOOM_LEVELS = [1, 2, 5, 10, 15, 30]; // 캔들 1개당 분(分) 단위
+// ====================== 코인 상세 차트 (캔들/라인 토글, 호버 툴팁, 드래그 이동) ======================
 const CHART_WINDOW_SIZE = 60; // 화면에 한 번에 보여줄 캔들 개수
-let chartZoomIndex = 0;
 let chartMode = 'candle'; // 'candle' | 'line' (기본값: 캔들 보기)
 let chartPanOffset = 0; // 0 = 최신 구간, 값이 클수록 과거 구간을 보여줌
 let lastChartCandles = []; // 마지막으로 그린 캔들 목록 (툴팁 조회용)
@@ -1053,7 +1051,7 @@ function renderDetailChart(history) {
     document.getElementById('chartTooltip').style.display = 'none';
     return;
   }
-  const groupMinutes = CHART_ZOOM_LEVELS[chartZoomIndex];
+  const groupMinutes = 1; // 1분 단위 캔들 고정
   const allCandles = groupIntoCandles(history, groupMinutes);
   const maxOffset = Math.max(0, allCandles.length - CHART_WINDOW_SIZE);
   chartPanOffset = Math.min(Math.max(chartPanOffset, 0), maxOffset);
@@ -1160,15 +1158,6 @@ detailChartSvg.addEventListener('pointercancel', endChartDrag);
 detailChartSvg.addEventListener('pointerleave', () => {
   if (!chartDrag) chartTooltipEl.style.display = 'none';
 });
-detailChartSvg.addEventListener('wheel', (e) => {
-  if (!coinsCache[selectedCoinId]) return;
-  e.preventDefault();
-  chartZoomIndex = e.deltaY < 0
-    ? Math.max(0, chartZoomIndex - 1)
-    : Math.min(CHART_ZOOM_LEVELS.length - 1, chartZoomIndex + 1);
-  chartPanOffset = 0; // 확대/축소 시 최신 구간으로 초기화
-  renderDetailChart(coinsCache[selectedCoinId].priceHistory);
-}, { passive: false });
 
 // 빗썸의 "체결내역"과 비슷하게, 최근 분당 가격 변동을 표로 보여준다 (최신순 최대 15개)
 function renderRecentPriceTable(history) {
