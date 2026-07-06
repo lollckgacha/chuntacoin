@@ -89,7 +89,15 @@
   #dailyBonusMsg { font-size: 12px; color: var(--accent); margin-left: auto; }
 
   /* ====================== 거래소 탭: 코인 리스트 ====================== */
-  #coinList { padding: 0 24px 24px; display: flex; flex-direction: column; gap: 8px; }
+  #coinList {
+    padding: 0 24px 24px; display: flex; flex-direction: column; gap: 8px;
+    overflow-x: hidden; scrollbar-gutter: stable;
+    scrollbar-width: thin; scrollbar-color: rgba(24,215,242,0.35) transparent;
+  }
+  #coinList::-webkit-scrollbar { width: 8px; }
+  #coinList::-webkit-scrollbar-track { background: transparent; }
+  #coinList::-webkit-scrollbar-thumb { background: rgba(24,215,242,0.35); border-radius: 8px; }
+  #coinList::-webkit-scrollbar-thumb:hover { background: rgba(24,215,242,0.55); }
   .coin-row {
     display: flex; align-items: center; gap: 12px;
     background: var(--card);
@@ -222,7 +230,25 @@
   .detail-price-row { text-align: center; margin: 12px 0; }
   .detail-price { font-size: 32px; font-weight: 900; }
   .detail-change { font-size: 14px; font-weight: 700; margin-top: 4px; }
-  #detailChart { width: 100%; height: 90px; display: block; margin: 12px 0; }
+  .chart-wrap { position: relative; margin: 12px 0; }
+  .chart-toolbar { display: flex; justify-content: flex-end; margin-bottom: 4px; }
+  .chart-toolbar button { padding: 4px 10px; font-size: 11px; border-radius: 6px; }
+  #detailChart { width: 100%; height: 90px; display: block; cursor: crosshair; }
+  .chart-tooltip {
+    position: absolute; display: none; pointer-events: none;
+    background: rgba(20,22,28,0.95); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 6px 10px; font-size: 11px; line-height: 1.5;
+    color: var(--text); white-space: nowrap; z-index: 5; transform: translateY(-100%);
+  }
+  .toast {
+    position: fixed; left: 50%; bottom: 32px; transform: translate(-50%, 16px);
+    background: var(--card); color: var(--text); border: 1px solid var(--accent);
+    padding: 12px 22px; border-radius: 12px; font-weight: 700; font-size: 14px;
+    opacity: 0; pointer-events: none; transition: opacity 0.25s, transform 0.25s;
+    z-index: 200; box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.error { border-color: var(--down); }
   .detail-close-btn { width: 100%; margin-top: 14px; }
   .not-tradable-note {
     text-align: center; font-size: 12px; color: var(--muted);
@@ -238,6 +264,10 @@
       padding: 0 24px 24px;
     }
     #tab-exchange.active #coinList { flex: 0 0 380px; padding: 0; max-height: 78vh; overflow-y: auto; }
+    #tab-exchange.active .coin-row { gap: 8px; padding: 10px; }
+    #tab-exchange.active .coin-row-name { min-width: 64px; }
+    #tab-exchange.active .coin-row-price { min-width: 76px; font-size: 15px; }
+    #tab-exchange.active .coin-row-change { min-width: 84px; font-size: 12px; }
     #tab-exchange.active #detailBg {
       position: static; display: block; background: none;
       flex: 1; min-width: 0;
@@ -337,7 +367,13 @@
         <div class="detail-price" id="detailPrice">-</div>
         <div class="detail-change" id="detailChange">-</div>
       </div>
-      <svg id="detailChart" viewBox="0 0 100 40" preserveAspectRatio="none"></svg>
+      <div class="chart-wrap" id="chartWrap">
+        <div class="chart-toolbar">
+          <button class="ghost" id="chartModeToggle" type="button">라인 보기</button>
+        </div>
+        <svg id="detailChart" viewBox="0 0 100 40" preserveAspectRatio="none"></svg>
+        <div class="chart-tooltip" id="chartTooltip"></div>
+      </div>
       <div id="detailNotTradable" class="not-tradable-note" style="display:none;">방송이 종료되어 지금은 거래할 수 없습니다.</div>
 
       <div class="row"><span>보유수량</span><span id="detailHolding">-</span></div>
@@ -405,6 +441,8 @@
     <p class="muted">모든 시간 표시는 한국 표준시(KST) 기준입니다.</p>
   </div>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
@@ -522,7 +560,9 @@ function renderGuestHistory() {
       <td>${d.qty}</td>
       <td>${fmt(d.price)}원</td>
     </tr>`);
-  document.getElementById('historyBody').innerHTML = rows.join('');
+  document.getElementById('historyBody').innerHTML = rows.length
+    ? rows.join('')
+    : '<tr><td colspan="5" style="text-align:center;color:var(--text-dim,#888)">거래 내역이 없습니다</td></tr>';
 }
 
 function refreshGuestUI() {
@@ -675,7 +715,13 @@ function listenToHistory(uid) {
           <td>${fmt(d.price)}원</td>
         </tr>`);
       });
-      document.getElementById('historyBody').innerHTML = rows.join('');
+      document.getElementById('historyBody').innerHTML = rows.length
+        ? rows.join('')
+        : '<tr><td colspan="5" style="text-align:center;color:var(--text-dim,#888)">거래 내역이 없습니다</td></tr>';
+    }, (err) => {
+      console.error('거래내역 조회 실패:', err);
+      document.getElementById('historyBody').innerHTML =
+        '<tr><td colspan="5" style="text-align:center;color:var(--down,#4d8dff)">거래 내역을 불러오지 못했습니다</td></tr>';
     });
 }
 
@@ -839,26 +885,109 @@ function renderDetailCountdown() {
   el.textContent = `가격 갱신 시작까지 ${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-// 분당 채팅수(가격) 흐름을 막대그래프로 표시. 직전 값보다 오르면 양봉(빨강), 내리면 음봉(파랑).
+// ====================== 코인 상세 차트 (캔들/라인 토글, 호버 툴팁, 휠 확대축소) ======================
+const CHART_ZOOM_LEVELS = [1, 2, 5, 10, 15, 30]; // 캔들 1개당 분(分) 단위
+let chartZoomIndex = 0;
+let chartMode = 'candle'; // 'candle' | 'line'
+let lastChartCandles = []; // 마지막으로 그린 캔들 목록 (툴팁 조회용)
+
+// 원본 1분 단위 시세 히스토리를 groupMinutes 단위로 묶어 OHLC 캔들로 변환한다.
+function groupIntoCandles(history, groupMinutes) {
+  if (groupMinutes <= 1) {
+    // 1분 단위는 시점당 값이 하나뿐이라 직전 값을 시가로 삼아 상승/하락을 표현한다.
+    return history.map((p, i) => {
+      const prevV = i > 0 ? history[i - 1].v : p.v;
+      return { t: p.t, o: prevV, c: p.v, h: Math.max(prevV, p.v), l: Math.min(prevV, p.v) };
+    });
+  }
+  const bucketMs = groupMinutes * 60000;
+  const buckets = new Map();
+  for (const p of history) {
+    const key = Math.floor(p.t / bucketMs);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(p);
+  }
+  return [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, pts]) => ({
+      t: pts[pts.length - 1].t,
+      o: pts[0].v,
+      c: pts[pts.length - 1].v,
+      h: Math.max(...pts.map(p => p.v)),
+      l: Math.min(...pts.map(p => p.v)),
+    }));
+}
+
 function renderDetailChart(history) {
   const svg = document.getElementById('detailChart');
-  if (!Array.isArray(history) || history.length < 2) { svg.innerHTML = ''; return; }
-  const values = history.map(p => p.v).slice(-60); // 최근 60개(1시간)까지만 표시
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const n = values.length;
+  if (!Array.isArray(history) || history.length < 2) {
+    svg.innerHTML = '';
+    lastChartCandles = [];
+    document.getElementById('chartTooltip').style.display = 'none';
+    return;
+  }
+  const groupMinutes = CHART_ZOOM_LEVELS[chartZoomIndex];
+  const candles = groupIntoCandles(history, groupMinutes).slice(-60); // 화면에는 최대 60개까지
+  lastChartCandles = candles;
+
+  const highs = candles.map(c => c.h), lows = candles.map(c => c.l);
+  const max = Math.max(...highs), min = Math.min(...lows);
+  const range = (max - min) || 1;
+  const n = candles.length;
   const barW = 100 / n;
-  const bars = values.map((v, i) => {
-    const prevV = i > 0 ? values[i - 1] : v;
-    const up = v >= prevV;
-    const h = ((v - min) / range) * 32 + 2;
-    const x = i * barW;
-    const y = 38 - h;
-    return `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${(barW * 0.65).toFixed(2)}" height="${h.toFixed(2)}" fill="${up ? 'var(--up)' : 'var(--down)'}" />`;
-  }).join('');
-  svg.innerHTML = bars;
+  const mapY = v => 38 - ((v - min) / range) * 34 - 2;
+
+  if (chartMode === 'line') {
+    const points = candles.map((c, i) => `${(i * barW + barW / 2).toFixed(2)},${mapY(c.c).toFixed(2)}`).join(' ');
+    svg.innerHTML = `<polyline points="${points}" fill="none" stroke="var(--accent)" stroke-width="1" />`;
+  } else {
+    const parts = candles.map((c, i) => {
+      const up = c.c >= c.o;
+      const color = up ? 'var(--up)' : 'var(--down)';
+      const cx = i * barW + barW / 2;
+      const bodyTop = mapY(Math.max(c.o, c.c));
+      const bodyBottom = mapY(Math.min(c.o, c.c));
+      const bodyH = Math.max(bodyBottom - bodyTop, 0.6);
+      const bw = barW * 0.6;
+      return `<line x1="${cx.toFixed(2)}" y1="${mapY(c.h).toFixed(2)}" x2="${cx.toFixed(2)}" y2="${mapY(c.l).toFixed(2)}" stroke="${color}" stroke-width="0.5" />`
+        + `<rect x="${(cx - bw / 2).toFixed(2)}" y="${bodyTop.toFixed(2)}" width="${bw.toFixed(2)}" height="${bodyH.toFixed(2)}" fill="${color}" />`;
+    }).join('');
+    svg.innerHTML = parts;
+  }
 }
+
+document.getElementById('chartModeToggle').onclick = () => {
+  chartMode = chartMode === 'candle' ? 'line' : 'candle';
+  document.getElementById('chartModeToggle').textContent = chartMode === 'candle' ? '라인 보기' : '캔들 보기';
+  renderDetailChart(coinsCache[selectedCoinId]?.priceHistory);
+};
+
+const detailChartSvg = document.getElementById('detailChart');
+const chartTooltipEl = document.getElementById('chartTooltip');
+
+detailChartSvg.addEventListener('mousemove', (e) => {
+  if (!lastChartCandles.length) return;
+  const rect = detailChartSvg.getBoundingClientRect();
+  const ratio = Math.min(Math.max((e.clientX - rect.left) / rect.width, 0), 0.999999);
+  const idx = Math.floor(ratio * lastChartCandles.length);
+  const c = lastChartCandles[idx];
+  if (!c) return;
+  chartTooltipEl.style.display = 'block';
+  chartTooltipEl.style.left = `${e.clientX - rect.left + 8}px`;
+  chartTooltipEl.style.top = `${e.clientY - rect.top}px`;
+  chartTooltipEl.innerHTML = chartMode === 'line'
+    ? `${formatKST(c.t)}<br>${fmt(c.c)}원`
+    : `${formatKST(c.t)}<br>시 ${fmt(c.o)} · 고 ${fmt(c.h)}<br>저 ${fmt(c.l)} · 종 ${fmt(c.c)}`;
+});
+detailChartSvg.addEventListener('mouseleave', () => { chartTooltipEl.style.display = 'none'; });
+detailChartSvg.addEventListener('wheel', (e) => {
+  if (!coinsCache[selectedCoinId]) return;
+  e.preventDefault();
+  chartZoomIndex = e.deltaY < 0
+    ? Math.max(0, chartZoomIndex - 1)
+    : Math.min(CHART_ZOOM_LEVELS.length - 1, chartZoomIndex + 1);
+  renderDetailChart(coinsCache[selectedCoinId].priceHistory);
+}, { passive: false });
 
 // 빗썸의 "체결내역"과 비슷하게, 최근 분당 가격 변동을 표로 보여준다 (최신순 최대 15개)
 function renderRecentPriceTable(history) {
@@ -908,6 +1037,14 @@ async function tradeFromDetail(type) {
 // 게스트(비로그인) 상태: 서버에 저장되는 공유 자산이 아니라 이 브라우저에만 있는
 // localStorage 데이터라서 클라이언트 계산이어도 조작 리스크가 없다 (조작해도 본인
 // 로컬 데이터만 바뀔 뿐, 서버/다른 사용자와는 무관함).
+function showToast(message, isError) {
+  const el = document.getElementById('toast');
+  el.textContent = message;
+  el.className = 'toast show' + (isError ? ' error' : '');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => { el.className = 'toast'; }, 2200);
+}
+
 async function executeTrade(type, coinId, qty, msgEl) {
   if (!currentUser) {
     tradeLocal(type, coinId, qty, msgEl);
@@ -915,8 +1052,8 @@ async function executeTrade(type, coinId, qty, msgEl) {
   }
   try {
     await tradeFn({ coinId, type, qty });
-    msgEl.style.color = 'lightgreen';
-    msgEl.textContent = type === 'buy' ? '매수 완료!' : '매도 완료! (수수료 1% 차감됨)';
+    msgEl.textContent = '';
+    showToast(type === 'buy' ? '매수 완료!' : '매도 완료! (수수료 1% 차감됨)');
   } catch (e) {
     msgEl.style.color = 'salmon';
     msgEl.textContent = e.message || '거래에 실패했습니다.';
@@ -960,10 +1097,10 @@ function tradeLocal(type, coinId, qty, msgEl) {
   saveGuestData(guestData);
   refreshGuestUI();
 
-  msgEl.style.color = 'lightgreen';
-  msgEl.textContent = type === 'buy'
+  msgEl.textContent = '';
+  showToast(type === 'buy'
     ? '매수 완료! (로컬 저장)'
-    : `매도 완료! 수수료 ${fmt(fee)}원 차감, 실수령 ${fmt(netAmount)}원 (로컬 저장)`;
+    : `매도 완료! 수수료 ${fmt(fee)}원 차감, 실수령 ${fmt(netAmount)}원 (로컬 저장)`);
 }
 </script>
 </body>
