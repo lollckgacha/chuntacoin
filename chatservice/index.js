@@ -34,6 +34,11 @@ const db = admin.firestore();
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 const LIVE_CHECK_INTERVAL_MS = 30 * 1000; // 방송 시작/종료 여부 체크 주기 (Firestore 아님, SOOP API 호출)
 const CHAT_PING_INTERVAL_MS = 60 * 1000; // 채팅 소켓 keepalive (5분 무핑이면 끊김)
+// close/error 이벤트 없이 응답만 조용히 멈추는 "좀비 연결"을 감지하기 위한 임계값.
+// (2026-07-09: 문모모 채팅 연결이 close/error 없이 그냥 멈춰서 분당 채팅수가 계속 0으로
+// 찍힌 사고 발생 - liveCheckLoop이 connections.has(coinId)만 보고 "연결돼 있다"고
+// 착각해 재연결을 시도하지 않았음. 일정 시간 아무 프레임도 못 받으면 강제로 재연결한다.)
+const STALE_CONNECTION_MS = 3 * 60 * 1000;
 
 const PRICE_BASE = 1000; // 현재가/종가 공식의 기본값
 const PRICE_MULTIPLIER = 100; // 분당 채팅수 1당 가격 가중치
@@ -196,11 +201,12 @@ async function loadInitialState() {
 function openChatConnection(coinId, bjId, connectInfo) {
   const url = `wss://${connectInfo.chatDomain}:${connectInfo.chatPort}/Websocket/${bjId}`;
   const ws = new WebSocket(url, ["chat"]);
-  const conn = { ws, chatCount: 0, pingTimer: null };
+  const conn = { ws, chatCount: 0, pingTimer: null, lastMessageAt: Date.now() };
   connections.set(coinId, conn);
 
   ws.on("open", () => {
     console.log(`[${coinId}/${bjId}] 채팅 연결 성공`);
+    conn.lastMessageAt = Date.now();
     ws.send(connectPacket());
     setTimeout(() => {
       if (ws.readyState === WebSocket.OPEN) ws.send(joinPacket(connectInfo.chatNo));
@@ -211,6 +217,7 @@ function openChatConnection(coinId, bjId, connectInfo) {
   });
 
   ws.on("message", (data) => {
+    conn.lastMessageAt = Date.now(); // 좀비 연결 감지용 - opcode와 무관하게 뭐든 받으면 살아있는 것
     const parts = Buffer.from(data).toString("utf8").split("\x0c");
     const opcode = parts[0].slice(2, 6);
     if (opcode === "0005") conn.chatCount += 1;
@@ -237,6 +244,11 @@ function closeChatConnection(coinId) {
   connections.delete(coinId);
 }
 
+// close/error 이벤트 없이 조용히 응답을 멈춘 좀비 연결 판별 (순수 함수 - 네트워크 없이 테스트 가능)
+function isStaleConnection(conn, now) {
+  return !!conn && now - conn.lastMessageAt > STALE_CONNECTION_MS;
+}
+
 // ====================== 방송 시작/종료 감지 루프 (SOOP API만 호출, Firestore 읽기 없음) ======================
 async function liveCheckLoop() {
   const now = Date.now();
@@ -244,9 +256,17 @@ async function liveCheckLoop() {
   await Promise.all(
     Array.from(coinState.entries()).map(async ([coinId, coin]) => {
       const isLive = await checkIsLive(coin.bjId);
-      const hasConn = connections.has(coinId);
       const wasLive = coin.status === "live";
 
+      const existingConn = connections.get(coinId);
+      if (isStaleConnection(existingConn, now)) {
+        console.warn(
+          `[${coinId}] 채팅 연결이 ${Math.round((now - existingConn.lastMessageAt) / 1000)}초간 응답 없음 (좀비 연결 추정) - 강제 재연결`
+        );
+        closeChatConnection(coinId);
+      }
+
+      const hasConn = connections.has(coinId);
       if (isLive && !hasConn) {
         const info = await getChatConnectInfo(coin.bjId);
         if (info) openChatConnection(coinId, coin.bjId, info);
@@ -369,10 +389,12 @@ module.exports = {
   pingPacket,
   openChatConnection,
   closeChatConnection,
+  isStaleConnection,
   connections,
   coinState,
   loadInitialState,
   liveCheckLoop,
   priceTick,
   db,
+  STALE_CONNECTION_MS,
 };
